@@ -1,0 +1,101 @@
+# "org" ensures this Service is used with the correct Serverless Framework Access Key.
+org: sistar
+# "app" enables Serverless Framework Dashboard features and sharing them with other Services.
+app: location-backend
+service: location-backend
+
+plugins:
+ - serverless-python-requirements
+ - serverless-dotenv-plugin
+
+
+provider:
+  name: aws
+  runtime: python3.12
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'eu-central-1'}
+  httpApi:
+    cors: true
+  environment:
+    DYNAMODB_LOCATIONS_TABLE: gps-tracking-service-${self:provider.stage}-locations
+    DYNAMODB_GEOCODE_CACHE_TABLE: gps-tracking-service-${self:provider.stage}-geocode-cache
+    ALLOWED_ORIGINS: "https://location-tracker-frontend-3otub3v05-ralf-sigmunds-projects.vercel.app,https://location-tracker-frontend-2wb9fwawo-ralf-sigmunds-projects.vercel.app,https://location-tracker-frontend-61vzbtt0b-ralf-sigmunds-projects.vercel.app,http://localhost:3000,http://localhost:5173,*"
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource: 
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_LOCATIONS_TABLE}"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_LOCATIONS_TABLE}-logs"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_GEOCODE_CACHE_TABLE}"
+        - Effect: Allow
+          Action:
+            - lambda:InvokeFunction
+          Resource: "arn:aws:lambda:${self:provider.region}:*:function:${self:service}-${self:provider.stage}-*"
+functions:
+  getLatestLocation:
+    handler: src/handlers/get_latest_location.handler
+    events:
+      - httpApi:
+          path: /location/latest
+          method: get
+  getLocationHistory:
+    handler: src/handlers/get_location_history.handler
+    events:
+      - httpApi:
+          path: /location/history
+          method: get
+  getDynamicLocationHistory:
+    handler: src/handlers/get_dynamic_location_history.handler
+    events:
+      - httpApi:
+          path: /location/dynamic-history
+          method: get
+  saveDriversLog:
+    handler: src/handlers/save_drivers_log.handler
+    events:
+      - httpApi:
+          path: /drivers-log
+          method: post
+  geocodeService:
+    handler: src/handlers/geocode_service.handler
+    events:
+      - httpApi:
+          path: /geocode
+          method: get
+      - httpApi:
+          path: /geocode
+          method: post
+resources:
+  Outputs:
+    ApiEndpoint:
+      Description: "API Gateway endpoint URL"
+      Value:
+        Fn::Join:
+          - ""
+          - - "https://"
+            - !Ref HttpApi
+            - ".execute-api.${self:provider.region}.amazonaws.com"
+  Resources:
+    LocationsLogsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMODB_LOCATIONS_TABLE}-logs
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: timestamp
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+          - AttributeName: timestamp
+            KeyType: RANGE

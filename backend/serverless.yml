@@ -64,6 +64,28 @@ functions:
       - httpApi:
           path: /drivers-log
           method: post
+      - httpApi:
+          path: /drivers-log
+          method: get
+      - httpApi:
+          path: /drivers-log
+          method: head
+  getDriversLogs:
+    handler: src/handlers/get_drivers_logs.handler
+    events:
+      - httpApi:
+          path: /drivers-logs
+          method: get
+      - httpApi:
+          path: /drivers-logs
+          method: options
+          
+  testDriversLogs:
+    handler: src/handlers/test_drivers_logs.handler
+    events:
+      - httpApi:
+          path: /test-drivers-logs
+          method: get
   geocodeService:
     handler: src/handlers/geocode_service.handler
     events:

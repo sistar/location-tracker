@@ -28,6 +28,7 @@ try {
 const LOCATION_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/location/latest";
 const HISTORY_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/location/dynamic-history";
 const DRIVERS_LOG_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/drivers-log";
+const DRIVERS_LOGS_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/drivers-logs";
 const GEOCODE_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/geocode";
 
 const MAX_ADDRESS_DISTANCE = 1000; // Maximum distance (meters) for a valid address
@@ -52,6 +53,22 @@ type SessionInfo = {
   avgSpeed?: number;    // Average speed in km/h during moving segments
   startAddress?: string;
   endAddress?: string;
+};
+
+type RoutePoint = Location;
+
+type DriversLogEntry = {
+  id: string;
+  timestamp: string;
+  startTime: string;
+  endTime: string;
+  distance: number;
+  duration: number;
+  purpose: string;
+  notes: string;
+  startAddress?: string;
+  endAddress?: string;
+  route?: RoutePoint[];
 };
 
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -96,6 +113,12 @@ export default function App() {
     newLng?: number,
     validationError?: string
   } | null>(null);
+  const [sessionAlreadySaved, setSessionAlreadySaved] = useState<boolean>(false);
+  const [driversLogs, setDriversLogs] = useState<DriversLogEntry[]>([]);
+  const [showLogsPanel, setShowLogsPanel] = useState<boolean>(false);
+  const [logsLoading, setLogsLoading] = useState<boolean>(false);
+  const [selectedLog, setSelectedLog] = useState<DriversLogEntry | null>(null);
+  const [routeLoading, setRouteLoading] = useState<boolean>(false);
 
 
   const fetchLocation = async () => {
@@ -434,6 +457,29 @@ export default function App() {
     setEditingAddress(null);
   };
 
+  // Check if a session has already been saved to a driver's log
+  const checkSessionSaved = async (sessionId: string) => {
+    try {
+      // Use a HEAD request to check if the session exists
+      // This is a simplified approach - in a real system, you might have a dedicated API endpoint
+      const response = await fetch(`${DRIVERS_LOG_API}?sessionId=${sessionId}`, {
+        method: 'HEAD',
+      });
+      
+      if (response.status === 409) {
+        // Session already exists
+        setSessionAlreadySaved(true);
+        return true;
+      } else {
+        setSessionAlreadySaved(false);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error checking session status:', error);
+      return false;
+    }
+  };
+
   const fetchHistory = async () => {
     try {
       const res = await fetch(HISTORY_API);
@@ -515,6 +561,9 @@ export default function App() {
           avgSpeed
         });
         
+        // Check if this session has already been saved
+        await checkSessionSaved(sessionId);
+        
         // Then fetch addresses asynchronously and update
         const fetchAddresses = async () => {
           try {
@@ -550,8 +599,10 @@ export default function App() {
         fetchAddresses();
         
         // Reset log form visibility and saved state when we get new session data
-        setLogSaved(false);
-        setLogSaveError(null);
+        if (!sessionAlreadySaved) {
+          setLogSaved(false);
+          setLogSaveError(null);
+        }
       }
     } catch (err: any) {
       console.error(err.message);
@@ -566,6 +617,19 @@ export default function App() {
     try {
       setLogSaveError(null);
       
+      // Prepare the locations array with important edited points
+      const locationData = history.map(loc => {
+        // Only include necessary fields to minimize data size
+        return {
+          lat: loc.lat,
+          lng: loc.lng,
+          timestamp: loc.timestamp,
+          segment_type: loc.segment_type,
+          stop_duration_seconds: loc.stop_duration_seconds,
+          address: loc.address
+        };
+      });
+      
       const response = await fetch(DRIVERS_LOG_API, {
         method: 'POST',
         headers: {
@@ -578,9 +642,23 @@ export default function App() {
           distance: sessionInfo.distance,
           duration: sessionInfo.duration,
           purpose: logFormData.purpose,
-          notes: logFormData.notes
+          notes: logFormData.notes,
+          startAddress: sessionInfo.startAddress,
+          endAddress: sessionInfo.endAddress,
+          locations: locationData
         })
       });
+      
+      // Handle specific error responses
+      if (response.status === 409) {
+        const errorData = await response.json();
+        if (errorData.overlappingId) {
+          setLogSaveError(`This time period overlaps with an existing driver's log entry (ID: ${errorData.overlappingId})`);
+        } else {
+          setLogSaveError(errorData.message || 'This session has already been saved to a driver\'s log');
+        }
+        return;
+      }
       
       if (!response.ok) {
         throw new Error('Failed to save driver\'s log');
@@ -588,32 +666,128 @@ export default function App() {
       
       setLogSaved(true);
       setShowLogForm(false);
+      
+      // Refresh logs list if panel is open
+      if (showLogsPanel) {
+        fetchDriversLogs();
+      }
     } catch (err: any) {
       console.error('Error saving log:', err);
       setLogSaveError(err.message || 'Failed to save log');
     }
   };
 
+  // Fetch driver's logs from the backend
+  const fetchDriversLogs = async () => {
+    try {
+      setLogsLoading(true);
+      
+      const response = await fetch(DRIVERS_LOGS_API);
+      
+      if (!response.ok) {
+        console.error('API error:', response.status, response.statusText);
+        throw new Error('Failed to fetch driver\'s logs');
+      }
+      
+      const data = await response.json();
+      setDriversLogs(data.logs || []);
+    } catch (error) {
+      console.error('Error fetching logs:', error);
+      // Fallback to empty array
+      setDriversLogs([]);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+  
+  // Fetch route for a specific driver's log entry
+  const fetchLogRoute = async (logId: string) => {
+    try {
+      setRouteLoading(true);
+      
+      // Clear any previously selected log route
+      setHistory([]);
+      
+      // Fetch the route data
+      const response = await fetch(`${DRIVERS_LOGS_API}?id=${logId}&route=true`);
+      
+      if (!response.ok) {
+        console.error('API error:', response.status, response.statusText);
+        throw new Error('Failed to fetch route data');
+      }
+      
+      const data = await response.json();
+      
+      if (data && data.route && Array.isArray(data.route)) {
+        // Set the selected log with route data
+        setSelectedLog({
+          ...data,
+          route: data.route
+        });
+        
+        // Also set the route points to history for display on the map
+        setHistory(data.route);
+        
+        // Reset live tracking when viewing a historical route
+        setLocation(null);
+        
+        // Update the map to center on the route
+        if (data.route.length > 0) {
+          // Center map on first point of route
+          const firstPoint = data.route[0];
+          if (firstPoint && firstPoint.lat && firstPoint.lng) {
+            setMapKey(prev => prev + 1); // Force map to recenter
+          }
+        }
+      } else {
+        throw new Error('No route data available');
+      }
+    } catch (error) {
+      console.error('Error fetching route:', error);
+      setError('Failed to load route data. Please try again.');
+    } finally {
+      setRouteLoading(false);
+    }
+  };
+  
+  // Return to live tracking view
+  const returnToLiveTracking = () => {
+    setSelectedLog(null);
+    fetchLocation();
+    fetchHistory();
+  };
+  
   useEffect(() => {
+    // If we're viewing a historical route, don't set up polling
+    if (selectedLog) return;
+    
     // Initial fetch
     fetchLocation();
     fetchHistory();
+    
     // Set up interval for polling
     const interval = setInterval(fetchLocation, 10000);
     
     // Clean up interval on unmount
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedLog]); // Re-run when selectedLog changes
+  
+  // Fetch logs when the logs panel is opened
+  useEffect(() => {
+    if (showLogsPanel) {
+      fetchDriversLogs();
+    }
+  }, [showLogsPanel]);
 
   return (
     <div style={{ height: "100%", width: "100%", position: "relative" }}>
       {/* Map - Always rendered to avoid initialization issues */}
-      {location ? (
+      {(location || (selectedLog && history.length > 0)) ? (
         <MapContainer
           key={mapKey}
           // Type assertion for LatLngExpression
-          center={[location.lat, location.lng] as [number, number]}
-          zoom={16}
+          center={selectedLog ? [history[0].lat, history[0].lng] as [number, number] : [location!.lat, location!.lng] as [number, number]}
+          zoom={selectedLog ? 14 : 16}
           style={{ height: "100%", width: "100%" }}
           ref={mapRef}
         >
@@ -622,9 +796,14 @@ export default function App() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' 
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <Marker position={[location.lat, location.lng] as [number, number]}>
-            <Popup>Last seen at {location.timestamp}</Popup>
-          </Marker>
+          
+          {/* Show current location marker only when not viewing a route */}
+          {location && !selectedLog && (
+            <Marker position={[location.lat, location.lng] as [number, number]}>
+              <Popup>Last seen at {location.timestamp}</Popup>
+            </Marker>
+          )}
+          
           {history.length > 1 && (
             <>
               {/* Lines for moving segments */}
@@ -659,6 +838,51 @@ export default function App() {
                 </Marker>
               )}
               
+              {/* Add markers for start and end points of a route if we're viewing a log */}
+              {selectedLog && history.length > 0 && (
+                <>
+                  {/* Start marker */}
+                  <Marker 
+                    key="route-start"
+                    position={[history[0].lat, history[0].lng] as [number, number]}
+                    icon={new L.Icon({
+                      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+                      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                      iconSize: [25, 41],
+                      iconAnchor: [12, 41],
+                      popupAnchor: [1, -34],
+                      shadowSize: [41, 41]
+                    })}
+                  >
+                    <Popup>
+                      <strong>Start</strong><br />
+                      {history[0].address || 'Starting point'}<br />
+                      {new Date(history[0].timestamp).toLocaleTimeString()}
+                    </Popup>
+                  </Marker>
+                  
+                  {/* End marker */}
+                  <Marker 
+                    key="route-end"
+                    position={[history[history.length-1].lat, history[history.length-1].lng] as [number, number]}
+                    icon={new L.Icon({
+                      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                      iconSize: [25, 41],
+                      iconAnchor: [12, 41],
+                      popupAnchor: [1, -34],
+                      shadowSize: [41, 41]
+                    })}
+                  >
+                    <Popup>
+                      <strong>End</strong><br />
+                      {history[history.length-1].address || 'End point'}<br />
+                      {new Date(history[history.length-1].timestamp).toLocaleTimeString()}
+                    </Popup>
+                  </Marker>
+                </>
+              )}
+              
               {/* Markers for stop segments */}
               {history
                 .filter(loc => loc.segment_type === 'stopped')
@@ -667,7 +891,7 @@ export default function App() {
                     key={`stop-${index}`}
                     position={[loc.lat, loc.lng] as [number, number]}
                     icon={new L.Icon({
-                      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
                       shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
                       iconSize: [25, 41],
                       iconAnchor: [12, 41],
@@ -786,7 +1010,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Last updated info */}
+      {/* Status info box */}
       <div className="map-status" style={{ 
           position: 'absolute', 
           bottom: '10px', 
@@ -799,12 +1023,68 @@ export default function App() {
           color: 'white',
           boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
         }}>
-        <div>Last updated:{" "}
-        {lastUpdated
-          ? lastUpdated.toLocaleTimeString()
-          : "Fetching..."}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {selectedLog ? (
+            <div style={{ color: '#ffcc00' }}>
+              Viewing Historical Route
+            </div>
+          ) : (
+            <div>Last updated:{" "}
+            {lastUpdated
+              ? lastUpdated.toLocaleTimeString()
+              : "Fetching..."}
+            </div>
+          )}
+          <button 
+            onClick={() => setShowLogsPanel(!showLogsPanel)}
+            style={{ 
+              padding: "2px 8px",
+              backgroundColor: "#007bff",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              fontSize: "0.8em"
+            }}
+          >
+            {showLogsPanel ? "Hide Logs" : "Show Logs"}
+          </button>
         </div>
-          {sessionInfo && (
+        
+        {/* If we're viewing a historical route, show info about it */}
+        {selectedLog && (
+          <div style={{ 
+            marginTop: '5px',
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            padding: '5px',
+            borderRadius: '3px'
+          }}>
+            <div style={{ fontSize: '0.9em', color: '#90caf9' }}>
+              {new Date(selectedLog.startTime).toLocaleDateString()} {new Date(selectedLog.startTime).toLocaleTimeString()} - {new Date(selectedLog.endTime).toLocaleTimeString()}
+            </div>
+            <div style={{ fontSize: '0.9em' }}>
+              <strong>Purpose:</strong> {selectedLog.purpose || 'Not specified'}
+            </div>
+            {!showLogsPanel && (
+              <button
+                onClick={returnToLiveTracking}
+                style={{ 
+                  marginTop: '5px',
+                  padding: '3px 8px',
+                  backgroundColor: '#4285F4',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                  fontSize: '0.8em'
+                }}
+              >
+                Return to Live Tracking
+              </button>
+            )}
+          </div>
+        )}
+          {sessionInfo && !selectedLog && (
               <>
                 <div style={{ 
                   backgroundColor: 'rgba(0,0,0,0.8)', 
@@ -1008,7 +1288,7 @@ export default function App() {
                     <div>Stops: {history.filter(loc => loc.segment_type === 'stopped').length}</div>
                   </div>
                 </div>
-                {!logSaved && (
+                {!logSaved && !sessionAlreadySaved && !selectedLog && (
                   <button 
                     onClick={() => setShowLogForm(!showLogForm)}
                     style={{ 
@@ -1027,12 +1307,163 @@ export default function App() {
                 {logSaved && (
                   <span style={{ marginLeft: "10px", color: "green" }}>✓ Log saved</span>
                 )}
+                {sessionAlreadySaved && (
+                  <span style={{ marginLeft: "10px", color: "orange" }}>⚠️ This session has already been saved</span>
+                )}
               </>
             )}
       </div>
       
+      {/* Drivers Logs Panel */}
+      {showLogsPanel && (
+        <div style={{
+          position: "absolute",
+          top: "10px",
+          right: "10px",
+          backgroundColor: "#2b2b2b",
+          color: "white",
+          padding: "15px",
+          borderRadius: "8px",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.5)",
+          zIndex: 1000,
+          maxWidth: "400px",
+          maxHeight: "80vh",
+          overflowY: "auto"
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h3 style={{ margin: "0" }}>Driver's Logs</h3>
+            <button
+              onClick={() => setShowLogsPanel(false)}
+              style={{ 
+                padding: '2px 8px',
+                backgroundColor: 'transparent',
+                color: 'white',
+                border: '1px solid #aaa',
+                borderRadius: '3px',
+                cursor: 'pointer'
+              }}
+            >
+              ✕
+            </button>
+          </div>
+          
+          {logsLoading ? (
+            <div style={{ textAlign: 'center', padding: '20px' }}>Loading logs...</div>
+          ) : driversLogs.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '20px' }}>No logs found.</div>
+          ) : (
+            <div>
+              {driversLogs.map((log, index) => (
+                <div key={log.id} style={{ 
+                  borderBottom: index < driversLogs.length - 1 ? '1px solid #444' : 'none',
+                  marginBottom: '10px',
+                  backgroundColor: selectedLog?.id === log.id ? '#1e3a5f' : 'transparent',
+                  borderRadius: '5px',
+                  padding: '10px'
+                }}>
+                  <div style={{ fontSize: '0.9em', color: '#90caf9', marginBottom: '5px' }}>
+                    {new Date(log.startTime).toLocaleDateString()} {new Date(log.startTime).toLocaleTimeString()} - {new Date(log.endTime).toLocaleTimeString()}
+                  </div>
+                  
+                  <div style={{ fontSize: '0.9em', marginBottom: '5px' }}>
+                    <strong>Purpose:</strong> {log.purpose || 'Not specified'}
+                  </div>
+                  
+                  {log.startAddress && (
+                    <div style={{ fontSize: '0.9em', marginBottom: '3px' }}>
+                      <strong>From:</strong> {log.startAddress}
+                    </div>
+                  )}
+                  
+                  {log.endAddress && (
+                    <div style={{ fontSize: '0.9em', marginBottom: '3px' }}>
+                      <strong>To:</strong> {log.endAddress}
+                    </div>
+                  )}
+                  
+                  <div style={{ fontSize: '0.9em', marginBottom: '3px' }}>
+                    <strong>Distance:</strong> {(log.distance / 1000).toFixed(2)} km
+                  </div>
+                  
+                  <div style={{ fontSize: '0.9em', marginBottom: '3px' }}>
+                    <strong>Duration:</strong> {log.duration.toFixed(1)} min
+                  </div>
+                  
+                  {log.notes && (
+                    <div style={{ fontSize: '0.9em', marginTop: '5px' }}>
+                      <strong>Notes:</strong><br />
+                      <div style={{ 
+                        backgroundColor: '#333', 
+                        padding: '5px', 
+                        borderRadius: '3px',
+                        marginTop: '3px'
+                      }}>
+                        {log.notes}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Button to view the route */}
+                  <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'center' }}>
+                    {selectedLog?.id === log.id ? (
+                      <button
+                        onClick={returnToLiveTracking}
+                        style={{ 
+                          padding: '5px 10px',
+                          backgroundColor: '#4285F4',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '0.8em'
+                        }}
+                      >
+                        Return to Live Tracking
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => fetchLogRoute(log.id)}
+                        disabled={routeLoading}
+                        style={{ 
+                          padding: '5px 10px',
+                          backgroundColor: '#4CAF50',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          opacity: routeLoading ? 0.7 : 1,
+                          fontSize: '0.8em'
+                        }}
+                      >
+                        {routeLoading ? 'Loading...' : 'View Route'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              
+              <div style={{ textAlign: 'center', marginTop: '10px' }}>
+                <button
+                  onClick={fetchDriversLogs}
+                  style={{ 
+                    padding: '5px 10px',
+                    backgroundColor: '#4CAF50',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      
       {/* Driver's Log Form */}
-      {showLogForm && sessionInfo && (
+      {showLogForm && sessionInfo && !selectedLog && (
         <div style={{
           position: "absolute",
           bottom: "220px",

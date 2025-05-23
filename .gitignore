@@ -32,3 +32,9 @@ venv/
 # Migration data files
 scripts/*_migration_*.json
 scripts/backup.json
+
+# Phantom cleanup data analysis
+phantom-cleanup/gps_logs/
+phantom-cleanup/venv/
+phantom-cleanup/.ipynb_checkpoints/
+phantom-cleanup/*.json

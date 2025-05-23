@@ -38,3 +38,9 @@ phantom-cleanup/gps_logs/
 phantom-cleanup/venv/
 phantom-cleanup/.ipynb_checkpoints/
 phantom-cleanup/*.json
+
+# Backend development artifacts
+backend/.vscode/
+backend/sls_env/
+backend/src/handlers/__pycache__/
+**/__pycache__/

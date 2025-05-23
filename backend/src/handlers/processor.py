@@ -22,9 +22,10 @@ print(f"Using locations table: {locations_table_name}")
 # Create GPS processor with default parameters
 # You can adjust these parameters to tune the filtering behavior
 gps_processor = gps_processing.GPSProcessor(
-    outlier_threshold_meters=100,  # Distance threshold for outlier detection
-    min_movement_meters=10,        # Minimum movement to store location  
-    max_history_size=10           # Number of locations to keep in history
+    outlier_threshold_meters=725,  # Distance threshold for outlier detection (fallback)
+    min_movement_meters=3,        # Minimum movement to store location  
+    max_history_size=10,          # Number of locations to keep in history
+    max_speed_kmh=180             # Maximum reasonable speed in km/h
 )
 
 def process_location(event, context):

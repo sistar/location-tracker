@@ -805,8 +805,16 @@ export default function App() {
 
   // Fetch driver's logs from the backend
   const fetchDriversLogs = async () => {
+    // Don't attempt to fetch if no vehicle is selected
+    if (!selectedVehicle) {
+      console.log('No vehicle selected, skipping drivers logs fetch');
+      setDriversLogs([]);
+      return;
+    }
+    
     try {
       setLogsLoading(true);
+      console.log('Fetching drivers logs for vehicle:', selectedVehicle);
       
       // Add vehicle_id parameter to filter logs by vehicle
       const url = `${DRIVERS_LOGS_API}?vehicle_id=${selectedVehicle}`;
@@ -818,6 +826,7 @@ export default function App() {
       }
       
       const data = await response.json();
+      console.log('Received drivers logs:', data);
       setDriversLogs(data.logs || []);
     } catch (error) {
       console.error('Error fetching logs:', error);
@@ -1246,13 +1255,25 @@ export default function App() {
     // Fetch available vehicles when component mounts
     fetchVehicles();
     
-    // If starting with trips view, load the logs
+    // Don't fetch logs immediately - wait for vehicle to be selected first
+    // This will be handled by the dependency on selectedVehicle below
+    
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  
+  // Separate effect that depends on selectedVehicle being set
+  useEffect(() => {
+    // Only proceed if we have a selected vehicle
+    if (!selectedVehicle) return;
+    
+    // If starting with trips view, load the logs now that we have a vehicle
     if (viewMode === 'trips') {
+      console.log('Loading driver logs for vehicle:', selectedVehicle);
       fetchDriversLogs();
     }
     
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedVehicle]); // This will run when selectedVehicle is first set
   
   useEffect(() => {
     // If we're viewing a historical route or session, don't set up polling
@@ -1285,7 +1306,11 @@ export default function App() {
   
   // Fetch logs when the logs panel is opened, when selected vehicle changes, or when in trips view mode
   useEffect(() => {
+    // Only proceed if we have a selected vehicle
+    if (!selectedVehicle) return;
+    
     if (showLogsPanel || viewMode === 'trips') {
+      console.log('Fetching drivers logs due to panel/view change for vehicle:', selectedVehicle);
       fetchDriversLogs();
     }
   }, [showLogsPanel, selectedVehicle, viewMode]); // Added viewMode dependency

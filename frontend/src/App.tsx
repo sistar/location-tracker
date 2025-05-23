@@ -1652,8 +1652,8 @@ export default function App() {
         </div>
       )}
 
-      {/* Map - Always rendered to avoid initialization issues, but positioned below nav bar */}
-      {(showTripsOverview && viewMode === 'trips') || (location || (selectedLog && history.length > 0) || (selectedSession && history.length > 0) || (isRawGpsMode && history.length > 0)) ? (
+      {/* Map - Only render when not showing trips overview */}
+      {!showTripsOverview && (location || (selectedLog && history.length > 0) || (selectedSession && history.length > 0) || (isRawGpsMode && history.length > 0)) ? (
         <MapContainer
           key={mapKey}
           // Type assertion for LatLonExpression
@@ -1671,7 +1671,7 @@ export default function App() {
           style={{ 
             height: "100%", 
             width: "100%",
-            marginTop: viewMode === 'trips' && showTripsOverview ? "100vh" : "60px" // Push map down when trips view is active
+            marginTop: "60px" // Simple top margin for navigation bar
           }}
           ref={mapRef}
           // Initial bounds, will be updated by MapController
@@ -1937,19 +1937,22 @@ export default function App() {
             )}
         </MapContainer>
       ) : (
-        <div className="map-loading" style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          backgroundColor: "rgba(0,0,0,0.7)",
-          color: "white",
-          padding: "20px",
-          borderRadius: "8px",
-          zIndex: 1000
-        }}>
-          Loading latest location...
-        </div>
+        // Show loading message only when not in trips overview mode
+        !showTripsOverview && (
+          <div className="map-loading" style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            backgroundColor: "rgba(0,0,0,0.7)",
+            color: "white",
+            padding: "20px",
+            borderRadius: "8px",
+            zIndex: 1000
+          }}>
+            Loading latest location...
+          </div>
+        )
       )}
 
       {/* Error message */}

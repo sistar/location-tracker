@@ -41,6 +41,10 @@ def migrate(dry_run=True, backup_file=None):
                 continue
 
             new_ts = normalize_timestamp(ts)
+            new_ts = new_ts.replace(" MESZ", "+02:00") # Ensure ISO format
+            new_ts = new_ts.replace(" MEZ", "+01:00") # Ensure ISO format
+            new_ts = new_ts.replace(" CEST", "+02:00") # Ensure ISO format
+            new_ts = new_ts.replace(" CET", "+01:00") # Ensure ISO format
             if ts == new_ts:
                 continue  # already correct
 

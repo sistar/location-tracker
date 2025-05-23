@@ -28,3 +28,7 @@ dist-ssr
 .vercel
 venv/
 .ipynb_checkpoints/
+
+# Migration data files
+scripts/*_migration_*.json
+scripts/backup.json

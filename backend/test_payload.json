@@ -1,0 +1,6 @@
+{
+  "httpMethod": "POST",
+  "queryStringParameters": {},
+  "body": "{\\\"sessionId\\\":\\\"test-session-123\\\",\\\"startTime\\\":1744587175,\\\"endTime\\\":1744648495,\\\"vehicleId\\\":\\\"vehicle_01\\\",\\\"distance\\\":25.6,\\\"duration\\\":3600,\\\"purpose\\\":\\\"Test drive\\\",\\\"notes\\\":\\\"Created for testing\\\",\\\"startAddress\\\":\\\"Test Start Address\\\",\\\"endAddress\\\":\\\"Test End Address\\\"}"
+}
+EOF < /dev/null

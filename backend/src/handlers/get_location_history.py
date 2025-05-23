@@ -1,7 +1,12 @@
 import json
 import boto3
+import os
 from boto3.dynamodb.conditions import Key
 from decimal import Decimal
+
+# IMPORTANT: DynamoDB timestamp schema
+# The 'timestamp' field is a Number (representing UTC epoch timestamp in seconds)
+# This is used as the sort key in DynamoDB tables
 
 
 def decimal_default(obj):
@@ -11,7 +16,13 @@ def decimal_default(obj):
 
 
 dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table("gps-tracking-service-dev-locations")  # Change to your table name
+
+# Get table names from environment variables or use defaults (matching actual names in AWS)
+locations_table_name = os.environ.get("DYNAMODB_LOCATIONS_TABLE", "gps-tracking-service-dev-locations-v2")
+
+# Create table resource
+table = dynamodb.Table(locations_table_name)
+print(f"Using locations table: {locations_table_name}")
 
 
 def handler(event, context):
@@ -23,6 +34,7 @@ def handler(event, context):
         )
 
         items = response.get('Items', [])
+        # Sort by timestamp which is now a number
         items_sorted = sorted(items, key=lambda x: x['timestamp'])
 
         return {

@@ -79,10 +79,10 @@ def save_address_to_cache(cache_key: str, address_data: Dict[str, Any]) -> None:
     except Exception as e:
         print(f"Cache save error: {str(e)}")
 
-def reverse_geocode(lat: float, lng: float) -> Dict[str, Any]:
+def reverse_geocode(lat: float, lon: float) -> Dict[str, Any]:
     """Get address from coordinates with caching"""
-    # Create a cache key from lat/lng
-    cache_key = f"rev_{lat:.6f}_{lng:.6f}"
+    # Create a cache key from lat/lon
+    cache_key = f"rev_{lat:.6f}_{lon:.6f}"
     
     # Check cache first
     cached_result = get_address_from_cache(cache_key)
@@ -96,7 +96,7 @@ def reverse_geocode(lat: float, lng: float) -> Dict[str, Any]:
         
         params = {
             "lat": lat,
-            "lon": lng,
+            "lon": lon,
             "format": "json",
             "zoom": 18,  # Building level precision
             "addressdetails": 1
@@ -131,7 +131,7 @@ def reverse_geocode(lat: float, lng: float) -> Dict[str, Any]:
             result = {
                 "address": address,
                 "lat": lat,
-                "lng": lng,
+                "lon": lon,
                 "raw_response": data,
                 "operation": "reverse"
             }
@@ -147,7 +147,7 @@ def reverse_geocode(lat: float, lng: float) -> Dict[str, Any]:
     return {
         "address": "Location lookup failed",
         "lat": lat,
-        "lng": lng,
+        "lon": lon,
         "error": "Geocoding failed",
         "operation": "reverse"
     }
@@ -192,7 +192,7 @@ def geocode_search(query: str) -> Dict[str, Any]:
                     "address": query,
                     "formatted_address": item.get("display_name", query),
                     "lat": float(item["lat"]),
-                    "lng": float(item["lon"]),
+                    "lon": float(item["lon"]),
                     "raw_response": item,
                     "operation": "search"
                 }
@@ -211,10 +211,10 @@ def geocode_search(query: str) -> Dict[str, Any]:
         "operation": "search"
     }
 
-def validate_address_coordinates(orig_lat: float, orig_lng: float, 
-                                new_lat: float, new_lng: float) -> Dict[str, Any]:
+def validate_address_coordinates(orig_lat: float, orig_lon: float, 
+                                new_lat: float, new_lon: float) -> Dict[str, Any]:
     """Validate if the new coordinates are within allowed distance"""
-    distance = haversine(orig_lat, orig_lng, new_lat, new_lng)
+    distance = haversine(orig_lat, orig_lon, new_lat, new_lon)
     
     if distance <= MAX_ADDRESS_DISTANCE:
         return {
@@ -257,16 +257,16 @@ def handler(event, context):
         if operation == "reverse":
             # Get coordinates from query params or body
             lat = float(query_params.get("lat") or body.get("lat", 0))
-            lng = float(query_params.get("lng") or body.get("lng", 0))
+            lon = float(query_params.get("lon") or body.get("lon", 0))
             
-            if not lat or not lng:
+            if not lat or not lon:
                 return {
                     "statusCode": 400,
                     "headers": {"Content-Type": "application/json"},
-                    "body": json.dumps({"error": "Missing lat/lng parameters"})
+                    "body": json.dumps({"error": "Missing lat/lon parameters"})
                 }
                 
-            result = reverse_geocode(lat, lng)
+            result = reverse_geocode(lat, lon)
             
         elif operation == "search":
             # Get address query from query params or body
@@ -284,18 +284,18 @@ def handler(event, context):
         elif operation == "validate":
             # Validate if new coordinates are within range of original
             orig_lat = float(query_params.get("orig_lat") or body.get("orig_lat", 0))
-            orig_lng = float(query_params.get("orig_lng") or body.get("orig_lng", 0))
+            orig_lon = float(query_params.get("orig_lon") or body.get("orig_lon", 0))
             new_lat = float(query_params.get("new_lat") or body.get("new_lat", 0))
-            new_lng = float(query_params.get("new_lng") or body.get("new_lng", 0))
+            new_lon = float(query_params.get("new_lon") or body.get("new_lon", 0))
             
-            if not all([orig_lat, orig_lng, new_lat, new_lng]):
+            if not all([orig_lat, orig_lon, new_lat, new_lon]):
                 return {
                     "statusCode": 400,
                     "headers": {"Content-Type": "application/json"},
                     "body": json.dumps({"error": "Missing coordinate parameters"})
                 }
                 
-            result = validate_address_coordinates(orig_lat, orig_lng, new_lat, new_lng)
+            result = validate_address_coordinates(orig_lat, orig_lon, new_lat, new_lon)
             
         else:
             return {

@@ -4,12 +4,25 @@ import os
 from decimal import Decimal
 import traceback
 from boto3.dynamodb.conditions import Key
+from datetime import datetime
+
+# IMPORTANT: DynamoDB timestamp schema
+# The 'timestamp' field is a Number (representing UTC epoch timestamp in seconds)
+# This is used as the sort key in DynamoDB tables
 
 # Configure DynamoDB
 dynamodb = boto3.resource('dynamodb')
-table_name = os.environ.get("DYNAMODB_LOCATIONS_TABLE", "gps-tracking-service-dev-locations")
-logs_table = dynamodb.Table(table_name + "-logs")  # Use the logs table
-locations_table = dynamodb.Table(table_name)  # Main locations table
+
+# Get table names from environment variables or use defaults (matching actual names in AWS)
+locations_table_name = os.environ.get("DYNAMODB_LOCATIONS_TABLE", "gps-tracking-service-dev-locations-v2")
+logs_table_name = os.environ.get("DYNAMODB_LOCATIONS_LOGS_TABLE", "gps-tracking-service-dev-locations-logs-v2")
+
+# Create table resources
+locations_table = dynamodb.Table(locations_table_name)
+logs_table = dynamodb.Table(logs_table_name)
+
+print(f"Using locations table: {locations_table_name}")
+print(f"Using logs table: {logs_table_name}")
 
 
 def decimal_default(obj):
@@ -24,14 +37,41 @@ def fetch_locations_by_time_range(vehicle_id, start_time, end_time):
     
     Args:
         vehicle_id (str): The ID of the vehicle
-        start_time (str): ISO format start timestamp
-        end_time (str): ISO format end timestamp
+        start_time: Start timestamp (can be string ISO format or epoch number)
+        end_time: End timestamp (can be string ISO format or epoch number)
         
     Returns:
         list: List of location data points
     """
     try:
         print(f"Fetching locations for vehicle {vehicle_id} from {start_time} to {end_time}")
+        
+        # Convert ISO format timestamps to epoch if needed
+        if isinstance(start_time, str):
+            if start_time.isdigit():
+                start_time = int(start_time)
+                print(f"Converted string numeric start_time to int: {start_time}")
+            else:
+                # Parse ISO timestamp to datetime then convert to epoch timestamp
+                try:
+                    start_time_dt = datetime.fromisoformat(start_time)
+                    start_time = int(start_time_dt.timestamp())
+                    print(f"Converted ISO start_time to epoch: {start_time}")
+                except Exception as e:
+                    print(f"Error converting start_time: {e}")
+            
+        if isinstance(end_time, str):
+            if end_time.isdigit():
+                end_time = int(end_time)
+                print(f"Converted string numeric end_time to int: {end_time}")
+            else:
+                # Parse ISO timestamp to datetime then convert to epoch timestamp
+                try:
+                    end_time_dt = datetime.fromisoformat(end_time)
+                    end_time = int(end_time_dt.timestamp())
+                    print(f"Converted ISO end_time to epoch: {end_time}")
+                except Exception as e:
+                    print(f"Error converting end_time: {e}")
         
         # Query the locations table with the time range condition
         response = locations_table.query(
@@ -91,9 +131,10 @@ def handler(event, context):
             "body": ""
         }
     
-    # Check if we're looking for a specific log (by ID)
+    # Get query parameters
     query_parameters = event.get('queryStringParameters', {}) or {}
     log_id = query_parameters.get('id')
+    vehicle_id = query_parameters.get('vehicle_id', 'vehicle_01')  # Default to vehicle_01 if not specified
     include_route = query_parameters.get('route') == 'true'
     
     try:
@@ -133,13 +174,22 @@ def handler(event, context):
             }
         
         # Get all log entries if no ID is provided
-        print("Scanning logs table")
+        print(f"Scanning logs table for vehicle_id: {vehicle_id}")
         response = logs_table.scan()
         items = response.get('Items', [])
-        print(f"Found {len(items)} items in the table")
+        print(f"Found {len(items)} total items in the table")
+        
+        # Filter logs for the requested vehicle_id
+        filtered_items = []
+        for item in items:
+            item_vehicle_id = item.get('vehicleId', 'vehicle_01')  # Default to vehicle_01 if not specified
+            if item_vehicle_id == vehicle_id:
+                filtered_items.append(item)
+        
+        print(f"Filtered to {len(filtered_items)} items for vehicle_id: {vehicle_id}")
         
         # If no items, return empty array
-        if not items:
+        if not filtered_items:
             return {
                 "statusCode": 200,
                 "headers": headers,
@@ -147,7 +197,15 @@ def handler(event, context):
             }
         
         # Sort by timestamp descending (newest first)
-        sorted_items = sorted(items, key=lambda x: x.get('timestamp', ''), reverse=True)
+        # Note: 'timestamp' here refers to the log creation timestamp, not the DynamoDB sort key
+        # Ensure we handle both string and numeric timestamps with a safe sorting key
+        def safe_timestamp_key(item):
+            ts = item.get('timestamp', '')
+            if isinstance(ts, (int, float, Decimal)):
+                return float(ts)
+            return ts
+            
+        sorted_items = sorted(filtered_items, key=safe_timestamp_key, reverse=True)
         
         # Process items for response
         logs = []
@@ -198,17 +256,25 @@ def get_route_for_log(log_entry):
     # Filter and prepare route points
     route = []
     
-    # Sort locations by timestamp
-    sorted_locations = sorted(locations, key=lambda x: x.get('timestamp', ''))
+    # Sort locations by timestamp (handling both string and numeric timestamps)
+    def safe_ts_sort_key(loc):
+        ts = loc.get('timestamp', 0)
+        if isinstance(ts, (int, float, Decimal)):
+            return float(ts)
+        elif isinstance(ts, str) and ts.isdigit():
+            return float(ts)
+        return ts
+        
+    sorted_locations = sorted(locations, key=safe_ts_sort_key)
     
     # Extract the route points
     for loc in sorted_locations:
         # Include only necessary fields to minimize payload size
         route_point = {
-            'lat': loc.get('latitude'),
-            'lng': loc.get('longitude'),
+            'lat': loc.get('lat'),
+            'lon': loc.get('lon'),
             'timestamp': loc.get('timestamp'),
-            'altitude': loc.get('altitude'),
+            'ele': loc.get('ele'),
             'cog': loc.get('cog'),
             'sog': loc.get('sog'),
             'quality': loc.get('quality'),

@@ -4,12 +4,24 @@ import os
 from datetime import datetime
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key
+import time
+
+# IMPORTANT: DynamoDB timestamp schema
+# The 'timestamp' field is a Number (representing UTC epoch timestamp in seconds)
+# This is used as the sort key in DynamoDB tables
 
 # Let API Gateway handle CORS
 
 dynamodb = boto3.resource('dynamodb')
-table_name = os.environ.get("DYNAMODB_LOCATIONS_TABLE", "LocationTable")
-logs_table = dynamodb.Table(table_name + "-logs")  # Use a separate table for logs
+
+# Get table names from environment variables or use defaults (matching actual names in AWS)
+locations_table_name = os.environ.get("DYNAMODB_LOCATIONS_TABLE", "gps-tracking-service-dev-locations-v2")
+logs_table_name = os.environ.get("DYNAMODB_LOCATIONS_LOGS_TABLE", "gps-tracking-service-dev-locations-logs-v2")
+
+# Create table resources
+logs_table = dynamodb.Table(logs_table_name)
+
+print(f"Using logs table: {logs_table_name}")
 
 
 def decimal_default(obj):
@@ -30,10 +42,43 @@ def convert_floats_to_decimal(obj):
         return obj
 
 
-def check_for_overlapping_logs(start_time, end_time):
+def convert_timestamp_to_epoch(timestamp):
     """
-    Check if a time period overlaps with any existing driver's log entries
+    Convert a timestamp string to epoch time if needed.
     
+    Args:
+        timestamp: The timestamp (string in ISO format or already epoch number)
+        
+    Returns:
+        int: Epoch timestamp as integer
+    """
+    # If it's already a number, return it
+    if isinstance(timestamp, (int, float, Decimal)):
+        return int(timestamp)
+        
+    # If it's a string that looks like a number, convert it
+    if isinstance(timestamp, str) and timestamp.isdigit():
+        return int(timestamp)
+        
+    # Otherwise, parse the ISO timestamp and convert to epoch
+    try:
+        dt = datetime.fromisoformat(timestamp)
+        return int(dt.timestamp())
+    except Exception as e:
+        print(f"Error converting timestamp: {str(e)}")
+        # If we can't parse it, return current time as fallback
+        return int(time.time())
+
+
+def check_for_overlapping_logs(start_time, end_time, vehicle_id='vehicle_01'):
+    """
+    Check if a time period overlaps with any existing driver's log entries for the same vehicle
+    
+    Args:
+        start_time: Start timestamp (string in ISO format or epoch number)
+        end_time: End timestamp (string in ISO format or epoch number)
+        vehicle_id (str): The vehicle ID to check for overlaps
+        
     Returns:
         bool: True if there's an overlap, False if no overlap
     """
@@ -46,13 +91,24 @@ def check_for_overlapping_logs(start_time, end_time):
         for item in items:
             log_start = item.get('startTime')
             log_end = item.get('endTime')
+            log_vehicle_id = item.get('vehicleId', 'vehicle_01')  # Default to vehicle_01 if not specified
             
             if not log_start or not log_end:
                 continue
                 
+            # Only check for overlaps for the same vehicle ID
+            if log_vehicle_id != vehicle_id:
+                continue
+                
+            # Convert to epoch format if needed for comparison
+            start_epoch = convert_timestamp_to_epoch(start_time)
+            end_epoch = convert_timestamp_to_epoch(end_time)
+            log_start_epoch = convert_timestamp_to_epoch(log_start)
+            log_end_epoch = convert_timestamp_to_epoch(log_end)
+            
             # Check for overlap: if the new period starts before an existing period ends
             # and ends after the existing period starts
-            if start_time <= log_end and end_time >= log_start:
+            if start_epoch <= log_end_epoch and end_epoch >= log_start_epoch:
                 return True, item.get('id')
                 
         return False, None
@@ -61,19 +117,37 @@ def check_for_overlapping_logs(start_time, end_time):
         return False, None
 
 
-def check_session_already_saved(session_id):
+def check_session_already_saved(session_id, vehicle_id='vehicle_01'):
     """
     Check if a session has already been saved to a driver's log
     
+    Args:
+        session_id (str): The session ID to check
+        vehicle_id (str): The vehicle ID to check against
+        
     Returns:
         bool: True if the session exists, False otherwise
     """
     try:
+        # Query by session ID
         response = logs_table.query(
             KeyConditionExpression=Key('id').eq(session_id)
         )
         
-        return len(response.get('Items', [])) > 0
+        items = response.get('Items', [])
+        
+        # If no items found, session doesn't exist
+        if not items:
+            return False
+            
+        # Check if any found item belongs to this vehicle
+        for item in items:
+            log_vehicle_id = item.get('vehicleId', 'vehicle_01')
+            if log_vehicle_id == vehicle_id:
+                return True
+                
+        # No matching vehicle ID found
+        return False
     except Exception as e:
         print(f"Error checking for existing session: {str(e)}")
         return False
@@ -127,9 +201,10 @@ def handler(event, context):
     # For HEAD or GET requests, check if session exists
     if http_method in ['HEAD', 'GET']:
         try:
-            # Extract sessionId from query parameters
+            # Extract parameters from query parameters
             query_params = event.get('queryStringParameters', {}) or {}
             session_id = query_params.get('sessionId')
+            vehicle_id = query_params.get('vehicle_id', 'vehicle_01')
             
             if not session_id:
                 return {
@@ -138,8 +213,8 @@ def handler(event, context):
                     "body": json.dumps({"message": "Missing sessionId parameter"})
                 }
             
-            # Check if session exists
-            if check_session_already_saved(session_id):
+            # Check if session exists for this vehicle
+            if check_session_already_saved(session_id, vehicle_id):
                 return {
                     "statusCode": 409,  # Conflict
                     "headers": headers,
@@ -174,17 +249,25 @@ def handler(event, context):
             session_id = body.get('sessionId')
             start_time = body.get('startTime')
             end_time = body.get('endTime')
+            vehicle_id = body.get('vehicleId', 'vehicle_01')
             
-            # Check if this session has already been saved
-            if check_session_already_saved(session_id):
+            # Convert start_time and end_time to epoch if they are ISO string format
+            if start_time and isinstance(start_time, str) and not start_time.isdigit():
+                start_time = convert_timestamp_to_epoch(start_time)
+                
+            if end_time and isinstance(end_time, str) and not end_time.isdigit():
+                end_time = convert_timestamp_to_epoch(end_time)
+            
+            # Check if this session has already been saved for this vehicle
+            if check_session_already_saved(session_id, vehicle_id):
                 return {
                     "statusCode": 409, # Conflict
                     "headers": headers,
                     "body": json.dumps({"message": "This session has already been saved to a driver's log"})
                 }
             
-            # Check for overlapping time periods with existing logs
-            has_overlap, overlapping_id = check_for_overlapping_logs(start_time, end_time)
+            # Check for overlapping time periods with existing logs for this vehicle
+            has_overlap, overlapping_id = check_for_overlapping_logs(start_time, end_time, vehicle_id)
             if has_overlap:
                 return {
                     "statusCode": 409, # Conflict
@@ -201,7 +284,7 @@ def handler(event, context):
             # Create log entry
             log_entry = {
                 'id': session_id,
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': int(datetime.utcnow().timestamp()),  # Use epoch timestamp for consistency
                 'startTime': start_time,
                 'endTime': end_time,
                 'distance': body.get('distance'),

@@ -1653,7 +1653,7 @@ export default function App() {
       )}
 
       {/* Map - Always rendered to avoid initialization issues, but positioned below nav bar */}
-      {(location || (selectedLog && history.length > 0) || (selectedSession && history.length > 0) || (isRawGpsMode && history.length > 0)) ? (
+      {(showTripsOverview && viewMode === 'trips') || (location || (selectedLog && history.length > 0) || (selectedSession && history.length > 0) || (isRawGpsMode && history.length > 0)) ? (
         <MapContainer
           key={mapKey}
           // Type assertion for LatLonExpression

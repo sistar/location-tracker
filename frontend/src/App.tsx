@@ -193,21 +193,35 @@ export default function App() {
     // Check cache first
     const cacheKey = `${lat},${lon}`;
     if (addressCache.has(cacheKey)) {
+      console.log(`Address cache hit for ${cacheKey}:`, addressCache.get(cacheKey));
       return addressCache.get(cacheKey) || 'Unknown location';
     }
     
     try {
       // Create a URL with query parameters
       const apiUrl = `${GEOCODE_API}?operation=reverse&lat=${lat}&lon=${lon}`;
+      console.log(`Fetching address from:`, apiUrl);
+      
+      // Add timeout to the request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
       
       // Use the proxy URL
-      const response = await fetch(apiUrl);
+      const response = await fetch(apiUrl, {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      console.log(`Geocoding response status:`, response.status);
       
       if (!response.ok) {
-        throw new Error('Geocoding failed');
+        throw new Error(`Geocoding failed with status: ${response.status}`);
       }
       
       const data = await response.json();
+      console.log(`Geocoding response data:`, data);
+      
       let address = 'Unknown location';
       
       // Check for error in response
@@ -221,13 +235,19 @@ export default function App() {
         address = data.address;
       }
       
+      console.log(`Successfully geocoded ${lat},${lon} to:`, address);
+      
       // Save to cache
       const newCache = new Map(addressCache);
       newCache.set(cacheKey, address);
       setAddressCache(newCache);
       
       return address;
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.error('Geocoding request timed out:', error);
+        return 'Address lookup timed out';
+      }
       console.error('Error fetching address:', error);
       return 'Address lookup failed';
     }
@@ -652,15 +672,25 @@ export default function App() {
         // Then fetch addresses asynchronously and update
         const fetchAddresses = async () => {
           try {
+            console.log('Starting to fetch addresses for session...');
+            
             // Get addresses for start and end
+            console.log('Fetching start address for:', startPoint.lat, startPoint.lon);
             const startAddress = await getAddress(startPoint.lat, startPoint.lon);
+            console.log('Got start address:', startAddress);
+            
+            console.log('Fetching end address for:', endPoint.lat, endPoint.lon);
             const endAddress = await getAddress(endPoint.lat, endPoint.lon);
+            console.log('Got end address:', endAddress);
             
             // Get addresses for stop points
             const stopPoints = points.filter((p: Location) => p.segment_type === 'stopped');
+            console.log(`Fetching addresses for ${stopPoints.length} stop points...`);
             for (const stopPoint of stopPoints) {
               if (!stopPoint.address) {
+                console.log('Fetching stop address for:', stopPoint.lat, stopPoint.lon);
                 stopPoint.address = await getAddress(stopPoint.lat, stopPoint.lon);
+                console.log('Got stop address:', stopPoint.address);
               }
             }
             
@@ -676,8 +706,18 @@ export default function App() {
             
             // Update history with stop addresses
             setHistory([...points]);
+            console.log('Finished fetching all addresses');
           } catch (error) {
             console.error('Error fetching addresses:', error);
+            // Set fallback addresses if there's an error
+            setSessionInfo(prev => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                startAddress: 'Address lookup failed',
+                endAddress: 'Address lookup failed'
+              };
+            });
           }
         };
         

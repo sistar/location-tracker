@@ -17,7 +17,9 @@ provider:
   httpApi:
     cors: true
   environment:
-    DYNAMODB_LOCATIONS_TABLE: gps-tracking-service-${self:provider.stage}-locations
+    # Reflecting actual table names currently in AWS
+    DYNAMODB_LOCATIONS_TABLE: gps-tracking-service-${self:provider.stage}-locations-v2
+    DYNAMODB_LOCATIONS_LOGS_TABLE: gps-tracking-service-${self:provider.stage}-locations-logs-v2
     DYNAMODB_GEOCODE_CACHE_TABLE: gps-tracking-service-${self:provider.stage}-geocode-cache
     ALLOWED_ORIGINS: "https://location-tracker-frontend-3otub3v05-ralf-sigmunds-projects.vercel.app,https://location-tracker-frontend-2wb9fwawo-ralf-sigmunds-projects.vercel.app,https://location-tracker-frontend-61vzbtt0b-ralf-sigmunds-projects.vercel.app,http://localhost:3000,http://localhost:5173,*"
   iam:
@@ -32,14 +34,20 @@ provider:
             - dynamodb:UpdateItem
             - dynamodb:DeleteItem
           Resource: 
-            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_LOCATIONS_TABLE}"
-            - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_LOCATIONS_TABLE}-logs"
+            # Current v2 tables
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/gps-tracking-service-${self:provider.stage}-locations-v2"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/gps-tracking-service-${self:provider.stage}-locations-logs-v2"
             - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_GEOCODE_CACHE_TABLE}"
+            # Legacy tables without v2 suffix (for backward compatibility)
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/gps-tracking-service-${self:provider.stage}-locations"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/gps-tracking-service-${self:provider.stage}-locations-logs"
         - Effect: Allow
           Action:
             - lambda:InvokeFunction
           Resource: "arn:aws:lambda:${self:provider.region}:*:function:${self:service}-${self:provider.stage}-*"
 functions:
+  processLocationData:
+    handler: src/handlers/processor.process_location
   getLatestLocation:
     handler: src/handlers/get_latest_location.handler
     events:
@@ -57,6 +65,12 @@ functions:
     events:
       - httpApi:
           path: /location/dynamic-history
+          method: get
+  getRawLocationHistory:
+    handler: src/handlers/get_raw_location_history.handler
+    events:
+      - httpApi:
+          path: /location/raw-history
           method: get
   saveDriversLog:
     handler: src/handlers/save_drivers_log.handler
@@ -95,6 +109,18 @@ functions:
       - httpApi:
           path: /geocode
           method: post
+  getVehicleIds:
+    handler: src/handlers/get_vehicle_ids.handler
+    events:
+      - httpApi:
+          path: /vehicles
+          method: get
+  scanUnsavedSessions:
+    handler: src/handlers/scan_unsaved_sessions.handler
+    events:
+      - httpApi:
+          path: /scan-sessions
+          method: get
 resources:
   Outputs:
     ApiEndpoint:
@@ -106,18 +132,70 @@ resources:
             - !Ref HttpApi
             - ".execute-api.${self:provider.region}.amazonaws.com"
   Resources:
-    LocationsLogsTable:
+    # Create new tables with -v2 suffix for epoch timestamp schema
+    LocationsTableV2:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: ${self:provider.environment.DYNAMODB_LOCATIONS_TABLE}-logs
+        # Using just the v2 suffix to avoid double v2-v2 from being created
+        TableName: gps-tracking-service-${self:provider.stage}-locations-v2
         BillingMode: PAY_PER_REQUEST
         AttributeDefinitions:
           - AttributeName: id
             AttributeType: S
           - AttributeName: timestamp
-            AttributeType: S
+            AttributeType: N
         KeySchema:
           - AttributeName: id
             KeyType: HASH
           - AttributeName: timestamp
             KeyType: RANGE
+            
+    LocationsLogsTableV2:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: gps-tracking-service-${self:provider.stage}-locations-logs-v2
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: timestamp
+            AttributeType: N
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+          - AttributeName: timestamp
+            KeyType: RANGE
+            
+    GeocodeCacheTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMODB_GEOCODE_CACHE_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: query
+            AttributeType: S
+        KeySchema:
+          - AttributeName: query
+            KeyType: HASH
+        TimeToLiveSpecification:
+          AttributeName: expires_at
+          Enabled: true
+    VehicleLocationRule:
+      Type: AWS::IoT::TopicRule
+      Properties:
+        RuleName: VehicleLocationProcessor
+        TopicRulePayload:
+          Sql: "SELECT * FROM '+/location'"
+          Actions:
+            - Lambda:
+                FunctionArn: !GetAtt ProcessLocationDataLambdaFunction.Arn
+          RuleDisabled: false
+          AwsIotSqlVersion: "2016-03-23"
+    # Lambda permission for IoT
+    ProcessLocationDataLambdaPermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        FunctionName: !GetAtt ProcessLocationDataLambdaFunction.Arn
+        Action: lambda:InvokeFunction
+        Principal: iot.amazonaws.com
+        SourceArn: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:rule/VehicleLocationProcessor"

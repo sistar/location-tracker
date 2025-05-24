@@ -44,6 +44,9 @@ type Location = {
   segment_type?: string;
   stop_duration_seconds?: number;
   address?: string;
+  // New properties for session debugging
+  isWithinSession?: boolean;  // True if point is within detected session boundaries
+  isExtendedContext?: boolean;  // True if point is outside session (context data)
 };
 
 type SessionInfo = {
@@ -59,6 +62,13 @@ type SessionInfo = {
   avgSpeed?: number;        // Average speed in km/h during moving segments
   startAddress?: string;
   endAddress?: string;
+  extendedStartTime?: number;
+  extendedEndTime?: number;
+  totalPointsLoaded?: number;
+  sessionPointsCount?: number;
+  contextPointsCount?: number;
+  hasDataMismatch?: boolean;
+  mismatchDetails?: string;
 };
 
 type RoutePoint = Location;
@@ -997,38 +1007,57 @@ export default function App() {
     }
   };
   
-  // Load a past session
+  // Load a past session with extended context for debugging
   const loadPastSession = async (session: PastSession) => {
     try {
       setSessionsLoading(true);
       setSelectedSession(session);
       
-      // Create a dynamic history request with the session's start time
-      // startTime is now an epoch timestamp, pass it directly
-      const url = `${HISTORY_API}?vehicle_id=${session.vehicleId}&start_timestamp=${session.startTime}`;
-      const response = await fetch(url);
+      console.log('Loading session with exact API format that works manually:');
+      console.log('Session:', new Date(session.startTime * 1000).toISOString(), 'to', new Date(session.endTime * 1000).toISOString());
+      
+      // Use the exact API call format that was confirmed to work manually
+      const workingUrl = `${HISTORY_API}?start_timestamp=${new Date(session.startTime * 1000).toISOString()}&vehicle_id=${session.vehicleId}&end_timestamp=${new Date(session.endTime * 1000).toISOString()}`;
+      console.log('API call:', workingUrl);
+      
+      const response = await fetch(workingUrl);
       
       if (!response.ok) {
-        throw new Error('Failed to load session data');
+        throw new Error(`API call failed: ${response.status}`);
       }
       
       const data = await response.json();
-      const points = data.map((item: any) => ({
+      console.log(`API returned ${data.length} points`);
+      
+      if (data.length === 0) {
+        throw new Error('No location data found for this session');
+      }
+      
+      // Check for the expected final point
+      const finalPoint = data.find((p: any) => p.timestamp === session.endTime);
+      if (finalPoint) {
+        console.log('✅ Found expected final point:', finalPoint);
+      } else {
+        console.warn(`⚠️ Expected final point (${session.endTime}) not found. Last point:`, data[data.length - 1]);
+      }
+      
+      // Map the data
+      const allPoints: Location[] = data.map((item: any) => ({
         lat: parseFloat(item.lat),
         lon: parseFloat(item.lon),
         timestamp: item.timestamp,
         segment_type: item.segment_type || 'moving',
-        stop_duration_seconds: item.stop_duration_seconds
+        stop_duration_seconds: item.stop_duration_seconds,
+        isWithinSession: true, // All points are within session range
+        isExtendedContext: false
       }));
       
-      // Filter points to include only those within the session timeframe
-      const sessionPoints = points.filter((point: Location) => 
-        point.timestamp >= session.startTime && point.timestamp <= session.endTime
-      );
+      console.log(`Loaded ${allPoints.length} points for session`);
       
-      setHistory(sessionPoints);
+      // Show the data
+      setHistory(allPoints);
       
-      // Set session info for this past session
+      // Set session info
       setSessionInfo({
         duration: session.duration,
         distance: session.distance,
@@ -1037,20 +1066,25 @@ export default function App() {
         sessionId: session.id,
         movingTime: session.movingTime,
         stoppedTime: session.stoppedTime,
-        avgSpeed: session.avgSpeed
+        avgSpeed: session.avgSpeed,
+        totalPointsLoaded: allPoints.length,
+        sessionPointsCount: allPoints.length,
+        contextPointsCount: 0,
+        hasDataMismatch: !finalPoint,
+        mismatchDetails: finalPoint ? undefined : `Session metadata indicates end at ${new Date(session.endTime * 1000).toLocaleString()}, but last GPS point is ${Math.round((session.endTime - allPoints[allPoints.length - 1].timestamp) / 60)} minutes earlier.`
       });
       
       // Reset live tracking
       setLocation(null);
       
-      // Update map to center on the session
+      // Update map to center on the data
       setMapKey(prev => prev + 1);
       
       // Switch to this session view
       setShowSessionsPanel(false);
     } catch (error) {
       console.error('Error loading session:', error);
-      setError('Failed to load session data. Please try again.');
+      setError(`Failed to load session data: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setSessionsLoading(false);
     }
@@ -1285,7 +1319,7 @@ export default function App() {
       if (isRawGpsMode) {
         // When in raw GPS mode, fetch the raw data
         fetchRawGpsData(rawGpsDays);
-      } else {
+        } else {
         // Normal mode - fetch location and history
         fetchLocation();
         fetchHistory(historyStartTime, timeWindow);
@@ -1772,7 +1806,7 @@ export default function App() {
                   .filter(loc => (isRawGpsMode || loc.segment_type === 'raw' || loc.segment_type === 'moving' || loc.segment_type === 'charging') && loc.lat != null && loc.lon != null)
                   .map((loc) => [loc.lat, loc.lon])}
                 color={isRawGpsMode ? "red" : "blue"}
-                weight={4}
+                weight={isRawGpsMode ? 3 : 4}
                 opacity={isRawGpsMode ? 0.5 : 1}
               />
               
@@ -1870,6 +1904,11 @@ export default function App() {
                         <strong>End</strong><br />
                         {history[history.length-1].address || 'End point'}<br />
                         {history[history.length-1].timestamp_str || new Date(history[history.length-1].timestamp * 1000).toLocaleTimeString()}
+                        {selectedSession && sessionInfo?.hasDataMismatch && (
+                          <div style={{ color: '#ff6666', marginTop: '5px', fontSize: '0.8em' }}>
+                            ⚠️ Data may be incomplete
+                          </div>
+                        )}
                       </Popup>
                     </Marker>
                   )}
@@ -2347,6 +2386,26 @@ export default function App() {
                       <div>Average moving speed: {sessionInfo.avgSpeed.toFixed(1)} km/h</div>
                     )}
                     <div>Stops: {history.filter(loc => loc.segment_type === 'stopped').length}</div>
+                    
+                    {/* Data mismatch warning */}
+                    {sessionInfo.hasDataMismatch && sessionInfo.mismatchDetails && (
+                      <div style={{ 
+                        marginTop: '8px', 
+                        paddingTop: '8px', 
+                        borderTop: '1px solid #666',
+                        backgroundColor: '#4a1f1f',
+                        padding: '8px',
+                        borderRadius: '4px',
+                        border: '1px solid #ff6b6b'
+                      }}>
+                        <div style={{ fontWeight: 'bold', color: '#ff6b6b', marginBottom: '5px' }}>
+                          ⚠️ Data Inconsistency Detected
+                        </div>
+                        <div style={{ fontSize: '0.8em', color: '#ffcccc' }}>
+                          {sessionInfo.mismatchDetails}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 {!logSaved && !sessionAlreadySaved && !selectedLog && !selectedSession && (

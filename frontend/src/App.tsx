@@ -773,6 +773,9 @@ export default function App() {
     
     try {
       setLogSaveError(null);
+      console.log('🚀 Starting to save driver log...');
+      console.log('Session info:', sessionInfo);
+      console.log('Form data:', logFormData);
       
       // Prepare the locations array with important edited points
       const locationData = history.map(loc => {
@@ -787,29 +790,39 @@ export default function App() {
         };
       });
       
+      const savePayload = {
+        sessionId: sessionInfo.sessionId,
+        startTime: sessionInfo.startTime,
+        endTime: sessionInfo.endTime,
+        distance: sessionInfo.distance,
+        duration: sessionInfo.duration,
+        purpose: logFormData.purpose,
+        notes: logFormData.notes,
+        startAddress: sessionInfo.startAddress,
+        endAddress: sessionInfo.endAddress,
+        vehicleId: selectedVehicle,  // Changed back to vehicleId to match backend expectations
+        locations: locationData
+      };
+      
+      console.log('📤 Sending save payload:', savePayload);
+      console.log('🚗 Vehicle ID being saved:', selectedVehicle);
+      console.log('📍 API endpoint:', DRIVERS_LOG_API);
+      
       const response = await fetch(DRIVERS_LOG_API, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          sessionId: sessionInfo.sessionId,
-          startTime: sessionInfo.startTime,
-          endTime: sessionInfo.endTime,
-          distance: sessionInfo.distance,
-          duration: sessionInfo.duration,
-          purpose: logFormData.purpose,
-          notes: logFormData.notes,
-          startAddress: sessionInfo.startAddress,
-          endAddress: sessionInfo.endAddress,
-          vehicleId: selectedVehicle,
-          locations: locationData
-        })
+        body: JSON.stringify(savePayload)
       });
+      
+      console.log('📥 Response status:', response.status);
+      console.log('📥 Response ok:', response.ok);
       
       // Handle specific error responses
       if (response.status === 409) {
         const errorData = await response.json();
+        console.error('❌ Conflict error:', errorData);
         if (errorData.overlappingId) {
           setLogSaveError(`This time period overlaps with an existing driver's log entry (ID: ${errorData.overlappingId})`);
         } else {
@@ -819,18 +832,53 @@ export default function App() {
       }
       
       if (!response.ok) {
-        throw new Error('Failed to save driver\'s log');
+        const errorText = await response.text();
+        console.error('❌ Save failed:', response.status, errorText);
+        throw new Error(`Failed to save driver's log: ${response.status} ${errorText}`);
       }
+      
+      const responseData = await response.json();
+      console.log('✅ Save successful! Response:', responseData);
       
       setLogSaved(true);
       setShowLogForm(false);
       
-      // Refresh logs list if panel is open
-      if (showLogsPanel) {
-        fetchDriversLogs();
+      console.log('🔄 Refreshing drivers logs...');
+      console.log('📊 Current view state - viewMode:', viewMode, 'showLogsPanel:', showLogsPanel, 'showTripsOverview:', showTripsOverview);
+      
+      // Add a small delay to handle potential database consistency issues
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Refresh logs list if panel is open OR if we're in trips view
+      if (showLogsPanel || viewMode === 'trips') {
+        await fetchDriversLogs();
+        console.log('✅ Drivers logs refreshed');
       }
+      
+      // Always try fetching without vehicle filter to see if log exists under different vehicle
+      console.log('🔍 Checking if log exists without vehicle filter...');
+      try {
+        const testResponse = await fetch(DRIVERS_LOGS_API);
+        if (testResponse.ok) {
+          const testData = await testResponse.json();
+          console.log('📊 All logs (no filter):', testData);
+          console.log('📊 All logs count:', testData.logs ? testData.logs.length : 'undefined');
+          
+          // If we found logs, let's check their vehicle IDs
+          if (testData.logs && testData.logs.length > 0) {
+            testData.logs.forEach((log: any, index: number) => {
+              console.log(`📝 Log ${index}: ID=${log.id}, vehicleId=${log.vehicleId || 'undefined'}, purpose=${log.purpose}`);
+            });
+          }
+        }
+      } catch (testError) {
+        console.warn('⚠️ Failed to fetch logs without filter:', testError);
+      }
+      
+      console.log('✅ Save process completed successfully!');
+      
     } catch (err: any) {
-      console.error('Error saving log:', err);
+      console.error('❌ Error saving log:', err);
       setLogSaveError(err.message || 'Failed to save log');
     }
   };
@@ -846,22 +894,37 @@ export default function App() {
     
     try {
       setLogsLoading(true);
-      console.log('Fetching drivers logs for vehicle:', selectedVehicle);
+      console.log('🔍 Fetching drivers logs for vehicle:', selectedVehicle);
       
       // Add vehicle_id parameter to filter logs by vehicle
       const url = `${DRIVERS_LOGS_API}?vehicle_id=${selectedVehicle}`;
+      console.log('📍 Drivers logs API URL:', url);
+      
       const response = await fetch(url);
       
+      console.log('📥 Drivers logs response status:', response.status);
+      console.log('📥 Drivers logs response ok:', response.ok);
+      
       if (!response.ok) {
-        console.error('API error:', response.status, response.statusText);
-        throw new Error('Failed to fetch driver\'s logs');
+        const errorText = await response.text();
+        console.error('❌ Drivers logs API error:', response.status, response.statusText, errorText);
+        throw new Error(`Failed to fetch driver's logs: ${response.status} ${errorText}`);
       }
       
       const data = await response.json();
-      console.log('Received drivers logs:', data);
-      setDriversLogs(data.logs || []);
+      console.log('✅ Received drivers logs response:', data);
+      console.log('📊 Logs array length:', data.logs ? data.logs.length : 'undefined');
+      console.log('📊 Logs array content:', data.logs);
+      
+      if (data.logs && Array.isArray(data.logs)) {
+        setDriversLogs(data.logs);
+        console.log('✅ Set drivers logs state with', data.logs.length, 'entries');
+      } else {
+        console.warn('⚠️ Invalid logs data structure:', data);
+        setDriversLogs([]);
+      }
     } catch (error) {
-      console.error('Error fetching logs:', error);
+      console.error('❌ Error fetching drivers logs:', error);
       // Fallback to empty array
       setDriversLogs([]);
     } finally {
@@ -1102,7 +1165,79 @@ export default function App() {
       // Update map to center on the data
       setMapKey(prev => prev + 1);
       
+      // Fetch addresses for start and end points asynchronously
+      const fetchSessionAddresses = async () => {
+        try {
+          console.log('Starting to fetch addresses for selected session...');
+          
+          if (allPoints.length > 0) {
+            // Get addresses for start and end
+            const startPoint = allPoints[0];
+            const endPoint = allPoints[allPoints.length - 1];
+            
+            console.log('Fetching start address for session:', startPoint.lat, startPoint.lon);
+            const startAddress = await getAddress(startPoint.lat, startPoint.lon);
+            console.log('Got session start address:', startAddress);
+            
+            console.log('Fetching end address for session:', endPoint.lat, endPoint.lon);
+            const endAddress = await getAddress(endPoint.lat, endPoint.lon);
+            console.log('Got session end address:', endAddress);
+            
+            // Get addresses for stop points
+            const stopPoints = allPoints.filter((p: Location) => 
+              p.segment_type === 'stopped' || p.segment_type === 'charging'
+            );
+            console.log(`Fetching addresses for ${stopPoints.length} stop points in session...`);
+            for (const stopPoint of stopPoints) {
+              if (!stopPoint.address) {
+                console.log('Fetching session stop address for:', stopPoint.lat, stopPoint.lon, 'type:', stopPoint.segment_type);
+                stopPoint.address = await getAddress(stopPoint.lat, stopPoint.lon);
+                console.log('Got session stop address:', stopPoint.address);
+              }
+            }
+            
+            // Ensure start and end points also get their addresses set in the points array
+            if (allPoints.length > 0) {
+              allPoints[0].address = startAddress;
+              allPoints[allPoints.length - 1].address = endAddress;
+            }
+            
+            // Update the session info with addresses
+            setSessionInfo(prev => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                startAddress,
+                endAddress
+              };
+            });
+            
+            // Update history with addresses
+            const updatedPoints = [...allPoints];
+            setHistory(updatedPoints);
+            
+            console.log('Finished fetching all addresses for session');
+          }
+        } catch (error) {
+          console.error('Error fetching session addresses:', error);
+          // Set fallback addresses if there's an error
+          setSessionInfo(prev => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              startAddress: 'Address lookup failed',
+              endAddress: 'Address lookup failed'
+            };
+          });
+        }
+      };
+      
+      // Start address fetching in background
+      fetchSessionAddresses();
+      
       // Switch to this session view
+      setViewMode('live');              // Add this line
+      setShowTripsOverview(false);      // Add this line
       setShowSessionsPanel(false);
     } catch (error) {
       console.error('Error loading session:', error);
@@ -1242,61 +1377,102 @@ export default function App() {
     useEffect(() => {
       // Force map invalidation on mount to fix initialization issues
       setTimeout(() => {
-        map.invalidateSize();
+        try {
+          if (map && map.getContainer()) {
+            // Test if map is ready by trying to get the size
+            map.getSize();
+            map.invalidateSize();
+          }
+        } catch (error) {
+          console.warn('Map invalidateSize failed on mount:', error);
+        }
       }, 100);
     }, [map]);
     
     useEffect(() => {
       // Use setTimeout to ensure this runs after the map is fully rendered
       setTimeout(() => {
-        // Always invalidate size first to prevent "Cannot read properties of undefined" errors
-        map.invalidateSize();
-        
-        // If viewing a session, log, or raw GPS data, don't reset view to live location
-        if ((selectedSession || selectedLog) && history.length > 1) {
-          // Only set view once when session is loaded
-          if (!initialViewSet.current) {
+        try {
+          // Always invalidate size first to prevent "Cannot read properties of undefined" errors
+          if (map && map.getContainer()) {
+            // Test if map is ready by trying to get the size
+            map.getSize();
+            map.invalidateSize();
+          }
+          
+          // If viewing a session, log, or raw GPS data, don't reset view to live location
+          if ((selectedSession || selectedLog) && history.length > 1) {
+            // Only set view once when session is loaded
+            if (!initialViewSet.current) {
+              const bounds = calculateMapBounds();
+              if (bounds && map && map.getContainer()) {
+                try {
+                  map.fitBounds(bounds, { 
+                    animate: true,
+                    padding: [50, 50] // Add padding around the bounds
+                  });
+                  initialViewSet.current = true;
+                } catch (mapError) {
+                  console.warn('Failed to fit bounds:', mapError);
+                }
+              }
+            }
+          } else if (isRawGpsMode && history.length > 1) {
+            // In raw GPS mode, fit to bounds of all history points
+            if (!initialViewSet.current) {
+              const bounds = calculateMapBounds();
+              if (bounds && map && map.getContainer()) {
+                try {
+                  map.fitBounds(bounds, { 
+                    animate: true,
+                    padding: [50, 50] // Add padding around the bounds
+                  });
+                  initialViewSet.current = true;
+                  console.log("Raw GPS mode: Set map view to bounds of all points");
+                } catch (mapError) {
+                  console.warn('Failed to fit bounds in raw GPS mode:', mapError);
+                }
+              }
+            }
+          } else if (isLiveTracking && location) {
+            // In live tracking mode, center on current location
+            if (map && map.getContainer()) {
+              try {
+                map.setView([location.lat, location.lon], 16, { animate: true });
+              } catch (mapError) {
+                console.warn('Failed to set view:', mapError);
+              }
+            }
+          } else if (!isLiveTracking && history.length > 1) {
+            // In historical mode, fit to bounds of all history points
             const bounds = calculateMapBounds();
-            if (bounds) {
-              map.fitBounds(bounds, { 
-                animate: true,
-                padding: [50, 50] // Add padding around the bounds
-              });
-              initialViewSet.current = true;
+            if (bounds && map && map.getContainer()) {
+              try {
+                map.fitBounds(bounds, { 
+                  animate: true,
+                  padding: [50, 50] // Add padding around the bounds
+                });
+              } catch (mapError) {
+                console.warn('Failed to fit bounds in historical mode:', mapError);
+              }
             }
           }
-        } else if (isRawGpsMode && history.length > 1) {
-          // In raw GPS mode, fit to bounds of all history points
-          if (!initialViewSet.current) {
-            const bounds = calculateMapBounds();
-            if (bounds) {
-              map.fitBounds(bounds, { 
-                animate: true,
-                padding: [50, 50] // Add padding around the bounds
-              });
-              initialViewSet.current = true;
-              console.log("Raw GPS mode: Set map view to bounds of all points");
+          
+          // Invalidate size again after view change
+          setTimeout(() => {
+            try {
+              if (map && map.getContainer()) {
+                map.getSize(); // Test if map is ready
+                map.invalidateSize();
+              }
+            } catch (error) {
+              console.warn('Map invalidateSize failed after view change:', error);
             }
-          }
-        } else if (isLiveTracking && location) {
-          // In live tracking mode, center on current location
-          map.setView([location.lat, location.lon], 16, { animate: true });
-        } else if (!isLiveTracking && history.length > 1) {
-          // In historical mode, fit to bounds of all history points
-          const bounds = calculateMapBounds();
-          if (bounds) {
-            map.fitBounds(bounds, { 
-              animate: true,
-              padding: [50, 50] // Add padding around the bounds
-            });
-          }
+          }, 200);
+        } catch (error) {
+          console.error('MapController useEffect error:', error);
         }
-        
-        // Invalidate size again after view change
-        setTimeout(() => {
-          map.invalidateSize();
-        }, 200);
-      }, 100);
+      }, 150); // Slightly longer delay to ensure map is ready
     }, [map, isLiveTracking, isRawGpsMode, history, location, selectedSession, selectedLog]);
     
     // Reset the initialViewSet flag when the session/log/mode changes
@@ -2283,254 +2459,263 @@ export default function App() {
             </div>
           </div>
         )}
-          {sessionInfo && !selectedLog && (
-              <>
-                <div style={{ 
-                  backgroundColor: 'rgba(0,0,0,0.8)', 
-                  padding: '8px', 
-                  borderRadius: '5px', 
-                  marginTop: '5px',
-                  color: 'white'
-                }}>
-                  <div style={{ fontWeight: 'bold', marginBottom: '5px', color: '#4CAF50' }}>Session Summary</div>
-                  
-                  {/* Start and End Location */}
-                  <div style={{ marginBottom: '5px' }}>
-                    <div style={{ fontWeight: 'bold', fontSize: '0.9em', color: '#90caf9' }}>
-                      Start: {sessionInfo.startTime_str || (sessionInfo.startTime ? new Date(sessionInfo.startTime * 1000).toLocaleTimeString() : '')}
+        
+        {/* Comprehensive Session Info Panel - shows for any session (selected or current) */}
+        {sessionInfo && !selectedLog && (
+          <div style={{ 
+            backgroundColor: 'rgba(0,0,0,0.8)', 
+            padding: '8px', 
+            borderRadius: '5px', 
+            marginTop: '5px',
+            color: 'white'
+          }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '5px', color: '#4CAF50' }}>
+              {selectedSession ? 'Selected Session Details' : 'Current Session Summary'}
+            </div>
+            
+            {/* Start and End Location */}
+            <div style={{ marginBottom: '5px' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '0.9em', color: '#90caf9' }}>
+                Start: {sessionInfo.startTime_str || (sessionInfo.startTime ? new Date(sessionInfo.startTime * 1000).toLocaleTimeString() : '')}
+              </div>
+              
+              {editingAddress?.type === 'start' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', margin: '5px 0' }}>
+                  <input
+                    type="text"
+                    value={editingAddress.current}
+                    onChange={(e) => handleAddressChange(e.target.value)}
+                    style={{ 
+                      backgroundColor: '#333',
+                      color: 'white',
+                      border: editingAddress.validationError ? '1px solid #ff6666' : '1px solid #555',
+                      padding: '4px 8px',
+                      borderRadius: '3px',
+                      marginBottom: '5px'
+                    }}
+                  />
+                  {editingAddress.validationError && (
+                    <div style={{ 
+                      color: '#ff6666', 
+                      fontSize: '0.8em', 
+                      marginBottom: '5px' 
+                    }}>
+                      {editingAddress.validationError}
                     </div>
-                    
-                    {editingAddress?.type === 'start' ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', margin: '5px 0' }}>
-                        <input
-                          type="text"
-                          value={editingAddress.current}
-                          onChange={(e) => handleAddressChange(e.target.value)}
-                          style={{ 
-                            backgroundColor: '#333',
-                            color: 'white',
-                            border: editingAddress.validationError ? '1px solid #ff6666' : '1px solid #555',
-                            padding: '4px 8px',
-                            borderRadius: '3px',
-                            marginBottom: '5px'
-                          }}
-                        />
-                        {editingAddress.validationError && (
-                          <div style={{ 
-                            color: '#ff6666', 
-                            fontSize: '0.8em', 
-                            marginBottom: '5px' 
-                          }}>
-                            {editingAddress.validationError}
-                          </div>
-                        )}
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <button
-                            onClick={() => setEditingAddress(null)}
-                            style={{ 
-                              padding: '2px 6px',
-                              backgroundColor: '#555',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '3px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => validateAndUpdate('start', editingAddress.current)}
-                            style={{ 
-                              padding: '2px 6px',
-                              backgroundColor: '#4CAF50',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '3px',
-                              cursor: 'pointer',
-                              marginLeft: '5px'
-                            }}
-                          >
-                            Save
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div 
-                        style={{ 
-                          fontSize: '0.9em', 
-                          marginLeft: '10px', 
-                          marginBottom: '5px',
-                          cursor: 'pointer',
-                          padding: '2px 5px',
-                          borderRadius: '3px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between'
-                        }}
-                        onClick={() => {
-                          const startPoint = history[0];
-                          setEditingAddress({
-                            id: 'start',
-                            type: 'start',
-                            current: sessionInfo.startAddress || 'Loading address...',
-                            originalLat: startPoint.lat,
-                            originalLon: startPoint.lon
-                          });
-                        }}
-                      >
-                        <span>{sessionInfo.startAddress || 'Loading address...'}</span>
-                        <span style={{ fontSize: '0.8em', marginLeft: '5px', color: '#aaa' }}>✎</span>
-                      </div>
-                    )}
-                    
-                    <div style={{ fontWeight: 'bold', fontSize: '0.9em', color: '#90caf9' }}>
-                      End: {sessionInfo.endTime_str || (sessionInfo.endTime ? new Date(sessionInfo.endTime * 1000).toLocaleTimeString() : '')}
-                    </div>
-                    
-                    {editingAddress?.type === 'end' ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', margin: '5px 0' }}>
-                        <input
-                          type="text"
-                          value={editingAddress.current}
-                          onChange={(e) => handleAddressChange(e.target.value)}
-                          style={{ 
-                            backgroundColor: '#333',
-                            color: 'white',
-                            border: editingAddress.validationError ? '1px solid #ff6666' : '1px solid #555',
-                            padding: '4px 8px',
-                            borderRadius: '3px',
-                            marginBottom: '5px'
-                          }}
-                        />
-                        {editingAddress.validationError && (
-                          <div style={{ 
-                            color: '#ff6666', 
-                            fontSize: '0.8em', 
-                            marginBottom: '5px' 
-                          }}>
-                            {editingAddress.validationError}
-                          </div>
-                        )}
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <button
-                            onClick={() => setEditingAddress(null)}
-                            style={{ 
-                              padding: '2px 6px',
-                              backgroundColor: '#555',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '3px',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => validateAndUpdate('end', editingAddress.current)}
-                            style={{ 
-                              padding: '2px 6px',
-                              backgroundColor: '#4CAF50',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '3px',
-                              cursor: 'pointer',
-                              marginLeft: '5px'
-                            }}
-                          >
-                            Save
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div 
-                        style={{ 
-                          fontSize: '0.9em', 
-                          marginLeft: '10px',
-                          cursor: 'pointer',
-                          padding: '2px 5px',
-                          borderRadius: '3px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between'
-                        }}
-                        onClick={() => {
-                          const endPoint = history[history.length - 1];
-                          setEditingAddress({
-                            id: 'end',
-                            type: 'end',
-                            current: sessionInfo.endAddress || 'Loading address...',
-                            originalLat: endPoint.lat,
-                            originalLon: endPoint.lon
-                          });
-                        }}
-                      >
-                        <span>{sessionInfo.endAddress || 'Loading address...'}</span>
-                        <span style={{ fontSize: '0.8em', marginLeft: '5px', color: '#aaa' }}>✎</span>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div style={{ borderTop: '1px solid #444', marginTop: '5px', paddingTop: '5px' }}>
-                    <div>Total duration: {sessionInfo.duration.toFixed(1)} min</div>
-                    <div>Distance: {(sessionInfo.distance / 1000).toFixed(2)} km</div>
-                    {sessionInfo.movingTime !== undefined && (
-                      <div>Moving time: {sessionInfo.movingTime.toFixed(1)} min</div>
-                    )}
-                    {sessionInfo.stoppedTime !== undefined && sessionInfo.stoppedTime > 0 ? (
-                      <div>Stopped time: {sessionInfo.stoppedTime.toFixed(1)} min</div>
-                    ) : (
-                      <div>No stops detected</div>
-                    )}
-                    {sessionInfo.avgSpeed !== undefined && (
-                      <div>Average moving speed: {sessionInfo.avgSpeed.toFixed(1)} km/h</div>
-                    )}
-                    <div>Stops: {history.filter(loc => loc.segment_type === 'stopped').length}</div>
-                    
-                    {/* Data mismatch warning */}
-                    {sessionInfo.hasDataMismatch && sessionInfo.mismatchDetails && (
-                      <div style={{ 
-                        marginTop: '8px', 
-                        paddingTop: '8px', 
-                        borderTop: '1px solid #666',
-                        backgroundColor: '#4a1f1f',
-                        padding: '8px',
-                        borderRadius: '4px',
-                        border: '1px solid #ff6b6b'
-                      }}>
-                        <div style={{ fontWeight: 'bold', color: '#ff6b6b', marginBottom: '5px' }}>
-                          ⚠️ Data Inconsistency Detected
-                        </div>
-                        <div style={{ fontSize: '0.8em', color: '#ffcccc' }}>
-                          {sessionInfo.mismatchDetails}
-                        </div>
-                      </div>
-                    )}
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <button
+                      onClick={() => setEditingAddress(null)}
+                      style={{ 
+                        padding: '2px 6px',
+                        backgroundColor: '#555',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '3px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => validateAndUpdate('start', editingAddress.current)}
+                      style={{ 
+                        padding: '2px 6px',
+                        backgroundColor: '#4CAF50',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '3px',
+                        cursor: 'pointer',
+                        marginLeft: '5px'
+                      }}
+                    >
+                      Save
+                    </button>
                   </div>
                 </div>
-                {!logSaved && !sessionAlreadySaved && !selectedLog && !selectedSession && (
-                  <button 
-                    onClick={() => setShowLogForm(!showLogForm)}
+              ) : (
+                <div 
+                  style={{ 
+                    fontSize: '0.9em', 
+                    marginLeft: '10px', 
+                    marginBottom: '5px',
+                    cursor: 'pointer',
+                    padding: '2px 5px',
+                    borderRadius: '3px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}
+                  onClick={() => {
+                    const startPoint = history[0];
+                    if (startPoint && sessionInfo) {
+                      setEditingAddress({
+                        id: 'start',
+                        type: 'start',
+                        current: sessionInfo.startAddress || 'Loading address...',
+                        originalLat: startPoint.lat,
+                        originalLon: startPoint.lon
+                      });
+                    }
+                  }}
+                >
+                  <span>{sessionInfo.startAddress || 'Loading address...'}</span>
+                  <span style={{ fontSize: '0.8em', marginLeft: '5px', color: '#aaa' }}>✎</span>
+                </div>
+              )}
+              
+              <div style={{ fontWeight: 'bold', fontSize: '0.9em', color: '#90caf9' }}>
+                End: {sessionInfo.endTime_str || (sessionInfo.endTime ? new Date(sessionInfo.endTime * 1000).toLocaleTimeString() : '')}
+              </div>
+              
+              {editingAddress?.type === 'end' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', margin: '5px 0' }}>
+                  <input
+                    type="text"
+                    value={editingAddress.current}
+                    onChange={(e) => handleAddressChange(e.target.value)}
                     style={{ 
-                      marginLeft: "10px", 
-                      padding: "2px 8px",
-                      backgroundColor: "#4CAF50",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer"
+                      backgroundColor: '#333',
+                      color: 'white',
+                      border: editingAddress.validationError ? '1px solid #ff6666' : '1px solid #555',
+                      padding: '4px 8px',
+                      borderRadius: '3px',
+                      marginBottom: '5px'
                     }}
-                  >
-                    {showLogForm ? "Hide log form" : "Save to driver's log"}
-                  </button>
-                )}
-                {logSaved && (
-                  <span style={{ marginLeft: "10px", color: "green" }}>✓ Log saved</span>
-                )}
-                {sessionAlreadySaved && (
-                  <span style={{ marginLeft: "10px", color: "orange" }}>⚠️ This session has already been saved</span>
-                )}
-              </>
+                  />
+                  {editingAddress.validationError && (
+                    <div style={{ 
+                      color: '#ff6666', 
+                      fontSize: '0.8em', 
+                      marginBottom: '5px' 
+                    }}>
+                      {editingAddress.validationError}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <button
+                      onClick={() => setEditingAddress(null)}
+                      style={{ 
+                        padding: '2px 6px',
+                        backgroundColor: '#555',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '3px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => validateAndUpdate('end', editingAddress.current)}
+                      style={{ 
+                        padding: '2px 6px',
+                        backgroundColor: '#4CAF50',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '3px',
+                        cursor: 'pointer',
+                        marginLeft: '5px'
+                      }}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div 
+                  style={{ 
+                    fontSize: '0.9em', 
+                    marginLeft: '10px',
+                    cursor: 'pointer',
+                    padding: '2px 5px',
+                    borderRadius: '3px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}
+                  onClick={() => {
+                    const endPoint = history[history.length - 1];
+                    if (endPoint && sessionInfo) {
+                      setEditingAddress({
+                        id: 'end',
+                        type: 'end',
+                        current: sessionInfo.endAddress || 'Loading address...',
+                        originalLat: endPoint.lat,
+                        originalLon: endPoint.lon
+                      });
+                    }
+                  }}
+                >
+                  <span>{sessionInfo.endAddress || 'Loading address...'}</span>
+                  <span style={{ fontSize: '0.8em', marginLeft: '5px', color: '#aaa' }}>✎</span>
+                </div>
+              )}
+            </div>
+            
+            <div style={{ borderTop: '1px solid #444', marginTop: '5px', paddingTop: '5px' }}>
+              <div>Total duration: {sessionInfo.duration.toFixed(1)} min</div>
+              <div>Distance: {(sessionInfo.distance / 1000).toFixed(2)} km</div>
+              {sessionInfo.movingTime !== undefined && (
+                <div>Moving time: {sessionInfo.movingTime.toFixed(1)} min</div>
+              )}
+              {sessionInfo.stoppedTime !== undefined && sessionInfo.stoppedTime > 0 ? (
+                <div>Stopped time: {sessionInfo.stoppedTime.toFixed(1)} min</div>
+              ) : (
+                <div>No stops detected</div>
+              )}
+              {sessionInfo.avgSpeed !== undefined && (
+                <div>Average moving speed: {sessionInfo.avgSpeed.toFixed(1)} km/h</div>
+              )}
+              <div>Stops: {history.filter(loc => loc.segment_type === 'stopped').length}</div>
+              
+              {/* Data mismatch warning */}
+              {sessionInfo.hasDataMismatch && sessionInfo.mismatchDetails && (
+                <div style={{ 
+                  marginTop: '8px', 
+                  paddingTop: '8px', 
+                  borderTop: '1px solid #666',
+                  backgroundColor: '#4a1f1f',
+                  padding: '8px',
+                  borderRadius: '4px',
+                  border: '1px solid #ff6b6b'
+                }}>
+                  <div style={{ fontWeight: 'bold', color: '#ff6b6b', marginBottom: '5px' }}>
+                    ⚠️ Data Inconsistency Detected
+                  </div>
+                  <div style={{ fontSize: '0.8em', color: '#ffcccc' }}>
+                    {sessionInfo.mismatchDetails}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Save to Driver's Log button - only show if not already saved and not viewing a log */}
+            {!logSaved && !sessionAlreadySaved && !selectedLog && (
+              <button 
+                onClick={() => setShowLogForm(!showLogForm)}
+                style={{ 
+                  marginTop: "10px", 
+                  padding: "8px 12px",
+                  backgroundColor: "#4CAF50",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  width: "100%"
+                }}
+              >
+                {showLogForm ? "Hide log form" : "Save to driver's log"}
+              </button>
             )}
+            {logSaved && (
+              <div style={{ marginTop: "10px", color: "green", textAlign: "center" }}>✓ Log saved</div>
+            )}
+            {sessionAlreadySaved && (
+              <div style={{ marginTop: "10px", color: "orange", textAlign: "center" }}>⚠️ This session has already been saved</div>
+            )}
+          </div>
+        )}
       </div>
       )}
       

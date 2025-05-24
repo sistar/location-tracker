@@ -1902,7 +1902,38 @@ export default function App() {
                     >
                       <Popup>
                         <strong>Start</strong><br />
-                        {history[0].address || 'Starting point'}<br />
+                        <div
+                          onClick={async () => {
+                            // If no address exists, try to fetch it immediately
+                            const startPoint = history[0];
+                            if (!startPoint.address) {
+                              try {
+                                const fetchedAddress = await getAddress(startPoint.lat, startPoint.lon);
+                                // Update the location's address in the history array
+                                const updatedHistory = [...history];
+                                updatedHistory[0].address = fetchedAddress;
+                                setHistory(updatedHistory);
+                              } catch (error) {
+                                console.error('Error fetching start point address on demand:', error);
+                              }
+                            }
+                          }}
+                          style={{ 
+                            cursor: 'pointer',
+                            marginBottom: '5px'
+                          }}
+                        >
+                          {history[0].address ? (
+                            <span>{history[0].address}</span>
+                          ) : (
+                            <span style={{ fontStyle: 'italic', color: '#888' }}>Click to load address...</span>
+                          )}
+                        </div>
+                        {selectedSession && sessionInfo?.hasDataMismatch && (
+                          <div style={{ color: '#ff6666', marginTop: '5px', fontSize: '0.8em' }}>
+                            ⚠️ Data may be incomplete
+                          </div>
+                        )}
                         {history[0].timestamp_str || new Date(history[0].timestamp * 1000).toLocaleTimeString()}
                       </Popup>
                     </Marker>
@@ -1924,13 +1955,39 @@ export default function App() {
                     >
                       <Popup>
                         <strong>End</strong><br />
-                        {history[history.length-1].address || 'End point'}<br />
-                        {history[history.length-1].timestamp_str || new Date(history[history.length-1].timestamp * 1000).toLocaleTimeString()}
+                        <div
+                          onClick={async () => {
+                            // If no address exists, try to fetch it immediately
+                            const endPoint = history[history.length-1];
+                            if (!endPoint.address) {
+                              try {
+                                const fetchedAddress = await getAddress(endPoint.lat, endPoint.lon);
+                                // Update the location's address in the history array
+                                const updatedHistory = [...history];
+                                updatedHistory[updatedHistory.length-1].address = fetchedAddress;
+                                setHistory(updatedHistory);
+                              } catch (error) {
+                                console.error('Error fetching end point address on demand:', error);
+                              }
+                            }
+                          }}
+                          style={{ 
+                            cursor: 'pointer',
+                            marginBottom: '5px'
+                          }}
+                        >
+                          {history[history.length-1].address ? (
+                            <span>{history[history.length-1].address}</span>
+                          ) : (
+                            <span style={{ fontStyle: 'italic', color: '#888' }}>Click to load address...</span>
+                          )}
+                        </div>
                         {selectedSession && sessionInfo?.hasDataMismatch && (
                           <div style={{ color: '#ff6666', marginTop: '5px', fontSize: '0.8em' }}>
                             ⚠️ Data may be incomplete
                           </div>
                         )}
+                        {history[history.length-1].timestamp_str || new Date(history[history.length-1].timestamp * 1000).toLocaleTimeString()}<br />
                       </Popup>
                     </Marker>
                   )}

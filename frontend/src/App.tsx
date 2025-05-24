@@ -706,12 +706,19 @@ export default function App() {
               }
             }
             
-            // Ensure start and end points also get their addresses set
-            if (startPoint && !startPoint.address) {
-              startPoint.address = startAddress;
-            }
-            if (endPoint && !endPoint.address) {
-              endPoint.address = endAddress;
+            // Ensure start and end points also get their addresses set in the points array
+            if (points.length > 0) {
+              // Update start point (first point in array)
+              if (!points[0].address) {
+                points[0].address = startAddress;
+                console.log('Set start point address:', startAddress);
+              }
+              
+              // Update end point (last point in array)
+              if (!points[points.length - 1].address) {
+                points[points.length - 1].address = endAddress;
+                console.log('Set end point address:', endAddress);
+              }
             }
             
             // Update the session info with addresses
@@ -724,9 +731,14 @@ export default function App() {
               };
             });
             
-            // Update history with stop addresses
-            setHistory([...points]);
+            // Update history with addresses and log final state
+            const updatedPoints = [...points];
+            setHistory(updatedPoints);
+            
             console.log('Finished fetching all addresses');
+            console.log('Final start point:', updatedPoints[0]);
+            console.log('Final end point:', updatedPoints[updatedPoints.length - 1]);
+            
           } catch (error) {
             console.error('Error fetching addresses:', error);
             // Set fallback addresses if there's an error

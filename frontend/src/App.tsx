@@ -693,15 +693,25 @@ export default function App() {
             const endAddress = await getAddress(endPoint.lat, endPoint.lon);
             console.log('Got end address:', endAddress);
             
-            // Get addresses for stop points
-            const stopPoints = points.filter((p: Location) => p.segment_type === 'stopped');
-            console.log(`Fetching addresses for ${stopPoints.length} stop points...`);
+            // Get addresses for stop points (including both stopped and charging points)
+            const stopPoints = points.filter((p: Location) => 
+              p.segment_type === 'stopped' || p.segment_type === 'charging'
+            );
+            console.log(`Fetching addresses for ${stopPoints.length} stop points (stopped + charging)...`);
             for (const stopPoint of stopPoints) {
               if (!stopPoint.address) {
-                console.log('Fetching stop address for:', stopPoint.lat, stopPoint.lon);
+                console.log('Fetching stop address for:', stopPoint.lat, stopPoint.lon, 'type:', stopPoint.segment_type);
                 stopPoint.address = await getAddress(stopPoint.lat, stopPoint.lon);
                 console.log('Got stop address:', stopPoint.address);
               }
+            }
+            
+            // Ensure start and end points also get their addresses set
+            if (startPoint && !startPoint.address) {
+              startPoint.address = startAddress;
+            }
+            if (endPoint && !endPoint.address) {
+              endPoint.address = endAddress;
             }
             
             // Update the session info with addresses
@@ -1996,14 +2006,34 @@ export default function App() {
                           </div>
                         ) : (
                           <div
-                            onClick={() => setEditingAddress({
-                              id: `stop-${index}`,
-                              type: 'stop',
-                              index: index,
-                              current: loc.address || 'Loading address...',
-                              originalLat: loc.lat,
-                              originalLon: loc.lon
-                            })}
+                            onClick={async () => {
+                              // If no address exists, try to fetch it immediately
+                              if (!loc.address) {
+                                try {
+                                  const fetchedAddress = await getAddress(loc.lat, loc.lon);
+                                  // Update the location's address in the history array
+                                  const updatedHistory = [...history];
+                                  const stopIndex = updatedHistory.findIndex(h => 
+                                    h.lat === loc.lat && h.lon === loc.lon && h.timestamp === loc.timestamp
+                                  );
+                                  if (stopIndex !== -1) {
+                                    updatedHistory[stopIndex].address = fetchedAddress;
+                                    setHistory(updatedHistory);
+                                  }
+                                } catch (error) {
+                                  console.error('Error fetching address on demand:', error);
+                                }
+                              }
+                              
+                              setEditingAddress({
+                                id: `stop-${index}`,
+                                type: 'stop',
+                                index: index,
+                                current: loc.address || 'Click to load address...',
+                                originalLat: loc.lat,
+                                originalLon: loc.lon
+                              });
+                            }}
                             style={{ 
                               marginBottom: '5px', 
                               cursor: 'pointer',
@@ -2015,7 +2045,7 @@ export default function App() {
                             {loc.address ? (
                               <span>{loc.address}</span>
                             ) : (
-                              <span style={{ fontStyle: 'italic' }}>Loading address...</span>
+                              <span style={{ fontStyle: 'italic', color: '#888' }}>Click to load address...</span>
                             )}
                             <span style={{ fontSize: '0.8em', marginLeft: '5px', color: '#666' }}>✎</span>
                           </div>

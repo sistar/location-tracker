@@ -15,10 +15,15 @@ locations_table = dynamodb.Table(os.environ.get("DYNAMODB_LOCATIONS_TABLE", "gps
 logs_table = dynamodb.Table(os.environ.get("DYNAMODB_LOCATIONS_LOGS_TABLE", "gps-tracking-service-dev-locations-logs-v2"))
 
 # Configuration parameters
-SESSION_GAP_MINUTES = 60  # Gap in minutes to consider a new session
+SESSION_GAP_MINUTES = 180  # Increased gap in minutes to consider a new session (3 hours instead of 2)
 MIN_SESSION_DURATION_MINUTES = 5  # Minimum session duration in minutes
 MIN_SESSION_DISTANCE_METERS = 500  # Minimum distance for a valid session
 MAX_SESSIONS_TO_RETURN = 100  # Maximum number of sessions to return
+
+# New: Additional parameters for smarter session detection
+MAX_STOP_GAP_MINUTES = 45  # Maximum gap during a normal stop before considering it a new session
+MAX_CHARGING_GAP_MINUTES = 300  # Maximum gap during charging (5 hours) before considering it a new session
+MAX_SPEED_KMH = 150  # Maximum reasonable vehicle speed for gap analysis
 
 def decimal_default(obj):
     if isinstance(obj, Decimal):
@@ -198,6 +203,59 @@ def is_time_in_existing_log(vehicle_id: str, timestamp: str) -> bool:
         print(f"Error checking existing logs: {str(e)}")
         return False
 
+def is_new_session_gap(last_location: Dict[str, Any], current_location: Dict[str, Any]) -> Tuple[bool, str]:
+    """
+    Determine if there should be a session break between two locations
+    Returns (is_new_session, reason)
+    """
+    last_timestamp = datetime.fromtimestamp(int(last_location['timestamp']))
+    current_timestamp = datetime.fromtimestamp(int(current_location['timestamp']))
+    time_gap_minutes = (current_timestamp - last_timestamp).total_seconds() / 60
+    
+    # Calculate distance between points
+    distance_meters = haversine(
+        float(last_location['lat']), float(last_location['lon']),
+        float(current_location['lat']), float(current_location['lon'])
+    )
+    
+    # Check if the last location was charging
+    last_segment_type = last_location.get('segment_type', 'moving')
+    is_charging_gap = last_segment_type == 'charging'
+    
+    # Use different thresholds based on whether it's a charging stop
+    max_gap_threshold = MAX_CHARGING_GAP_MINUTES if is_charging_gap else MAX_STOP_GAP_MINUTES
+    
+    # If gap is very long (> 3 hours for normal, > 5 hours for charging), definitely a new session
+    if time_gap_minutes > SESSION_GAP_MINUTES:
+        if not is_charging_gap or time_gap_minutes > MAX_CHARGING_GAP_MINUTES:
+            return True, f"Long time gap: {time_gap_minutes:.1f} minutes ({'charging' if is_charging_gap else 'normal'})"
+    
+    # If gap is short (< threshold), likely same session
+    if time_gap_minutes <= max_gap_threshold:
+        gap_type = "charging" if is_charging_gap else "normal"
+        return False, f"Short {gap_type} gap: {time_gap_minutes:.1f} minutes"
+    
+    # For medium gaps, check if movement is reasonable
+    if time_gap_minutes > max_gap_threshold:
+        # Calculate implied speed if this were continuous movement
+        if time_gap_minutes > 0:
+            implied_speed_kmh = (distance_meters / 1000) / (time_gap_minutes / 60)
+            
+            # For charging gaps, be more lenient with speed checks
+            speed_threshold = MAX_SPEED_KMH * (2 if is_charging_gap else 1)
+            
+            # If implied speed is reasonable, probably same session
+            if implied_speed_kmh <= speed_threshold:
+                gap_type = "charging" if is_charging_gap else "normal"
+                return False, f"Reasonable speed {gap_type} gap: {time_gap_minutes:.1f}min, {implied_speed_kmh:.1f}km/h"
+            else:
+                gap_type = "charging" if is_charging_gap else "normal"
+                return True, f"Unreasonable speed {gap_type} gap: {time_gap_minutes:.1f}min, {implied_speed_kmh:.1f}km/h"
+    
+    # Default to continuing session for medium gaps
+    gap_type = "charging" if is_charging_gap else "normal"
+    return False, f"Medium {gap_type} gap continued: {time_gap_minutes:.1f} minutes"
+
 def identify_sessions(vehicle_id: str, locations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Identify distinct sessions from locations data"""
     if not locations:
@@ -209,19 +267,24 @@ def identify_sessions(vehicle_id: str, locations: List[Dict[str, Any]]) -> List[
     # Apply phantom cleanup to identify stops vs moving segments
     # cleaned_locations = clean_phantom_locations(sorted_locations)
     cleaned_locations = sorted_locations
-    # Find session boundaries
+    
+    # Find session boundaries with improved logic
     sessions = []
     current_session = []
-    last_timestamp = None
     
-    for location in cleaned_locations:
+    for i, location in enumerate(cleaned_locations):
         current_timestamp = datetime.fromtimestamp(int(location['timestamp']))
         
-        # Check if this point starts a new session
-        if last_timestamp and (current_timestamp - last_timestamp).total_seconds() > SESSION_GAP_MINUTES * 60:
-            # Process completed session
-            print(f"ending session due to gap {(current_timestamp - last_timestamp).total_seconds()} current:{current_timestamp} prev:{last_timestamp}")
-            if current_session:
+        # Check if this point starts a new session (improved logic)
+        if current_session:  # If we have a previous location
+            last_location = current_session[-1]
+            is_new_session, reason = is_new_session_gap(last_location, location)
+            
+            if is_new_session:
+                # Process completed session
+                last_timestamp = datetime.fromtimestamp(int(last_location['timestamp']))
+                print(f"ending session: {reason} (current:{current_timestamp} prev:{last_timestamp})")
+                
                 session_info = process_session(vehicle_id, current_session)
                 if session_info:
                     sessions.append(session_info)
@@ -229,7 +292,6 @@ def identify_sessions(vehicle_id: str, locations: List[Dict[str, Any]]) -> List[
         
         # Add point to current session
         current_session.append(location)
-        last_timestamp = current_timestamp
     
     # Process the last session
     if current_session:
@@ -309,12 +371,14 @@ def process_session(vehicle_id: str, session_points: List[Dict[str, Any]]) -> Op
         # Skip this session as it overlaps with an existing log
         return None
     
-    # Create session info object
+    # Create session info object with ISO timestamps for easier analysis
     session_info = {
         'id': session_id,
         'vehicleId': vehicle_id,
         'startTime': start_point['timestamp'],
         'endTime': end_point['timestamp'],
+        'startTimeISO': start_time.isoformat(),
+        'endTimeISO': end_time.isoformat(),
         'duration': duration,
         'distance': total_distance,
         'movingTime': moving_time,

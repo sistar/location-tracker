@@ -1,19 +1,49 @@
-# location-tracker visualize travels and provide a drivers log
+# Location Tracker Frontend
 
-The App
-- displays gps-locations on the map
-- identifies travelling sessions / journeys including short (charging) breaks of up to 60 minutes
-- allows user to store a session as a trip and annotate with information (trip purpose, private or business,..)
+A React TypeScript application for GPS location tracking, trip management, and historical data visualization.
 
-This is the frontend part
+## Overview
 
-Deployment is achieved by the following commands:
+The Location Tracker provides:
+- Real-time GPS location display on interactive maps
+- Automatic travel session detection with intelligent break handling
+- Driver's log functionality for trip annotation and management
+- Historical data analysis and visualization
+- Address geocoding and validation
+
+## Quick Start
+
+### Development
+```bash
+npm install
+npm run dev
 ```
-npx vite dev
+
+### Production Deployment
+```bash
+npm run build
 vercel --prod
 ```
 
-The App can be accessed at [https://location-tracker-frontend-seven.vercel.app/]
+**Live Application**: [https://location-tracker-frontend-seven.vercel.app/](https://location-tracker-frontend-seven.vercel.app/)
+
+## Documentation
+
+### Architecture & Development
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Complete architecture overview and design principles
+- **[COMPONENTS.md](./COMPONENTS.md)** - Component library documentation
+- **[HOOKS.md](./HOOKS.md)** - Custom hooks and state management
+- **[API.md](./API.md)** - Backend API integration guide
+
+### Project Structure
+```
+src/
+├── types/              # TypeScript definitions
+├── services/           # API and business logic
+├── components/         # Reusable UI components
+├── hooks/              # Custom React hooks
+└── App.tsx            # Main application
+```
 
 
 ## Recent Updates:

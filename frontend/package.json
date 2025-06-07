@@ -16,7 +16,7 @@
     "react-dom": "^19.0.0",
     "react-leaflet": "^5.0.0",
     "uuid": "^11.1.0",
-    "vercel": "^41.6.2"
+    "vercel": "^42.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, FormEvent } from "react";
+import { useEffect, useState, useRef, FormEvent, useCallback } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L, { LatLngBoundsExpression } from "leaflet";
@@ -9,12 +9,10 @@ L.Icon.Default.imagePath = "https://unpkg.com/leaflet@1.7.1/dist/images/";
 
 // Alternative approach if the above doesn't work:
 // This uses type assertions to avoid TypeScript errors
-// @ts-ignore - Leaflet's type definitions might not include this internals
 try {
-  // @ts-ignore
+  // @ts-expect-error - Leaflet's internal property access for icon setup
   delete L.Icon.Default.prototype._getIconUrl;
   
-  // @ts-ignore
   L.Icon.Default.mergeOptions({
     iconRetinaUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png",
     iconUrl: "https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png",
@@ -35,6 +33,34 @@ const VEHICLES_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/
 const SCAN_SESSIONS_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/scan-sessions";
 
 const MAX_ADDRESS_DISTANCE = 1000; // Maximum distance (meters) for a valid address
+
+// API Response Types
+interface LocationApiResponse {
+  lat: string;
+  lon: string;
+  timestamp: number;
+}
+
+interface HistoryApiItem {
+  lat: string;
+  lon: string;
+  timestamp: number;
+  timestamp_str?: string;
+  segment_type?: string;
+  stop_duration_seconds?: number;
+  isWithinSession?: boolean;
+  isExtendedContext?: boolean;
+  address?: string;
+}
+
+interface DriversLogsApiResponse {
+  logs: DriversLogEntry[];
+}
+
+interface GeocodeApiResponse {
+  address: string;
+  error?: string;
+}
 
 type Location = {
   lat: number;
@@ -83,6 +109,7 @@ type DriversLogEntry = {
   duration: number;
   purpose: string;
   notes: string;
+  vehicleId?: string;  // Vehicle ID associated with this log entry
   startAddress?: string;
   endAddress?: string;
   route?: RoutePoint[];
@@ -174,13 +201,13 @@ export default function App() {
   const [showTripsOverview, setShowTripsOverview] = useState<boolean>(true);
 
 
-  const fetchLocation = async () => {
+  const fetchLocation = useCallback(async () => {
     try {
       setError(null);
       const url = `${LOCATION_API}?vehicle_id=${selectedVehicle}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch location");
-      const data = await res.json();
+      const data: LocationApiResponse = await res.json();
       
       if (!data.lat || !data.lon) {
         throw new Error("Invalid location data received");
@@ -192,14 +219,14 @@ export default function App() {
         timestamp: data.timestamp
       });
       setMapKey(prev => prev + 1);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error fetching location:", err);
-      setError(err.message || "An unknown error occurred");
+      setError(err instanceof Error ? err.message : "An unknown error occurred");
     }
-  };
+  }, [selectedVehicle]);
 
   // Function to get address from lat/lon
-  const getAddress = async (lat: number, lon: number): Promise<string> => {
+  const getAddress = useCallback(async (lat: number, lon: number): Promise<string> => {
     // Check cache first
     const cacheKey = `${lat},${lon}`;
     if (addressCache.has(cacheKey)) {
@@ -229,7 +256,7 @@ export default function App() {
         throw new Error(`Geocoding failed with status: ${response.status}`);
       }
       
-      const data = await response.json();
+      const data: GeocodeApiResponse = await response.json();
       console.log(`Geocoding response data:`, data);
       
       let address = 'Unknown location';
@@ -253,15 +280,15 @@ export default function App() {
       setAddressCache(newCache);
       
       return address;
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === 'AbortError') {
         console.error('Geocoding request timed out:', error);
         return 'Address lookup timed out';
       }
       console.error('Error fetching address:', error);
       return 'Address lookup failed';
     }
-  };
+  }, [addressCache]);
   
   // Geocode address to get coordinates using our backend API
   const geocodeAddress = async (address: string): Promise<{lat: number, lon: number} | null> => {
@@ -531,7 +558,7 @@ export default function App() {
   };
 
   // Check if a session has already been saved to a driver's log
-  const checkSessionSaved = async (sessionId: string) => {
+  const checkSessionSaved = useCallback(async (sessionId: string) => {
     try {
       // Use a HEAD request to check if the session exists
       // This is a simplified approach - in a real system, you might have a dedicated API endpoint
@@ -551,7 +578,7 @@ export default function App() {
       console.error('Error checking session status:', error);
       return false;
     }
-  };
+  }, [selectedVehicle]);
 
   // Helper function to format timestamps in ISO format without timezone issues
   const formatISOTimestamp = (timestamp: string | number | Date): string => {
@@ -576,7 +603,7 @@ export default function App() {
     return date.toISOString().split('.')[0];
   };
 
-  const fetchHistory = async (startTimestamp?: string | number, timeWindowHours: number = 6) => {
+  const fetchHistory = useCallback(async (startTimestamp?: string | number, timeWindowHours: number = 6) => {
     try {
       // Build URL with appropriate parameters
       let url = `${HISTORY_API}?vehicle_id=${selectedVehicle}`;
@@ -596,13 +623,15 @@ export default function App() {
       
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch history");
-      const data = await res.json();
-      const points = data.map((item: any) => ({
+      const data: HistoryApiItem[] = await res.json();
+      const points = data.map((item: HistoryApiItem) => ({
         lat: parseFloat(item.lat),
         lon: parseFloat(item.lon),
         timestamp: item.timestamp,
+        timestamp_str: item.timestamp_str,
         segment_type: item.segment_type || 'moving',
-        stop_duration_seconds: item.stop_duration_seconds
+        stop_duration_seconds: item.stop_duration_seconds,
+        address: item.address
       }));
       setHistory(points);
 
@@ -761,10 +790,10 @@ export default function App() {
           setLogSaveError(null);
         }
       }
-    } catch (err: any) {
-      console.error(err.message);
+    } catch (err: unknown) {
+      console.error(err instanceof Error ? err.message : 'Unknown error');
     }
-  };
+  }, [selectedVehicle, checkSessionSaved, getAddress, sessionAlreadySaved]);
   
   const handleLogFormSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -866,7 +895,7 @@ export default function App() {
           
           // If we found logs, let's check their vehicle IDs
           if (testData.logs && testData.logs.length > 0) {
-            testData.logs.forEach((log: any, index: number) => {
+            testData.logs.forEach((log: DriversLogEntry, index: number) => {
               console.log(`📝 Log ${index}: ID=${log.id}, vehicleId=${log.vehicleId || 'undefined'}, purpose=${log.purpose}`);
             });
           }
@@ -877,14 +906,14 @@ export default function App() {
       
       console.log('✅ Save process completed successfully!');
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('❌ Error saving log:', err);
-      setLogSaveError(err.message || 'Failed to save log');
+      setLogSaveError(err instanceof Error ? err.message : 'Failed to save log');
     }
   };
 
   // Fetch driver's logs from the backend
-  const fetchDriversLogs = async () => {
+  const fetchDriversLogs = useCallback(async () => {
     // Don't attempt to fetch if no vehicle is selected
     if (!selectedVehicle) {
       console.log('No vehicle selected, skipping drivers logs fetch');
@@ -911,19 +940,19 @@ export default function App() {
         throw new Error(`Failed to fetch driver's logs: ${response.status} ${errorText}`);
       }
       
-      const data = await response.json();
+      const data: DriversLogsApiResponse = await response.json();
       console.log('✅ Received drivers logs response:', data);
       console.log('📊 Logs array length:', data.logs ? data.logs.length : 'undefined');
       
       if (data.logs && Array.isArray(data.logs)) {
         // Enhanced debugging: log each trip's vehicle ID
         console.log('🚗 Vehicle ID analysis:');
-        data.logs.forEach((log: any, index: number) => {
+        data.logs.forEach((log: DriversLogEntry, index: number) => {
           console.log(`  Log ${index}: id=${log.id}, vehicleId="${log.vehicleId}", purpose="${log.purpose}"`);
         });
         
         // Client-side filtering as backup - filter out logs that don't match the selected vehicle
-        const filteredLogs = data.logs.filter((log: any) => {
+        const filteredLogs = data.logs.filter((log: DriversLogEntry) => {
           const logVehicleId = log.vehicleId;
           const matches = logVehicleId === selectedVehicle;
           
@@ -949,7 +978,7 @@ export default function App() {
     } finally {
       setLogsLoading(false);
     }
-  };
+  }, [selectedVehicle]);
   
   // Fetch route for a specific driver's log entry
   const fetchLogRoute = async (logId: string) => {
@@ -1144,7 +1173,7 @@ export default function App() {
       }
       
       // Check for the expected final point
-      const finalPoint = data.find((p: any) => p.timestamp === session.endTime);
+      const finalPoint = data.find((p: HistoryApiItem) => p.timestamp === session.endTime);
       if (finalPoint) {
         console.log('✅ Found expected final point:', finalPoint);
       } else {
@@ -1152,12 +1181,14 @@ export default function App() {
       }
       
       // Map the data
-      const allPoints: Location[] = data.map((item: any) => ({
+      const allPoints: Location[] = data.map((item: HistoryApiItem) => ({
         lat: parseFloat(item.lat),
         lon: parseFloat(item.lon),
         timestamp: item.timestamp,
+        timestamp_str: item.timestamp_str,
         segment_type: item.segment_type || 'moving',
         stop_duration_seconds: item.stop_duration_seconds,
+        address: item.address,
         isWithinSession: true, // All points are within session range
         isExtendedContext: false
       }));
@@ -1283,7 +1314,7 @@ export default function App() {
     fetchHistory(undefined, timeWindow);
   };
   
-  const fetchRawGpsData = async (days: number = 7) => {
+  const fetchRawGpsData = useCallback(async (days: number = 7) => {
     try {
       setError(null);
       
@@ -1298,7 +1329,7 @@ export default function App() {
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch raw GPS data");
       
-      const data = await res.json();
+      const data: HistoryApiItem[] = await res.json();
       console.log(`Received ${data.length} raw GPS points`);
       
       if (!data || data.length === 0) {
@@ -1308,7 +1339,7 @@ export default function App() {
       }
       
       // Map the data to our Location type (add segment_type for filtering)
-      const points = data.map((item: any) => ({
+      const points = data.map((item: HistoryApiItem) => ({
         lat: parseFloat(item.lat),
         lon: parseFloat(item.lon),
         timestamp: item.timestamp,
@@ -1356,11 +1387,11 @@ export default function App() {
         console.log("Map key updated to force redraw");
       }, 200);
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error fetching raw GPS data:", err);
-      setError(err.message || "An unknown error occurred");
+      setError(err instanceof Error ? err.message : "An unknown error occurred");
     }
-  };
+  }, [selectedVehicle]);
 
   // Calculate bounds for the map based on location history
   const calculateMapBounds = (): LatLngBoundsExpression | undefined => {
@@ -1573,7 +1604,7 @@ export default function App() {
         if (interval) clearInterval(interval);
       };
     }
-  }, [selectedLog, selectedSession, selectedVehicle, historyStartTime, timeWindow, isLiveTracking, isRawGpsMode, rawGpsDays, viewMode]);
+  }, [selectedLog, selectedSession, selectedVehicle, historyStartTime, timeWindow, isLiveTracking, isRawGpsMode, rawGpsDays, viewMode, fetchHistory, fetchLocation, fetchRawGpsData]);
   
   // Fetch logs when the logs panel is opened, when selected vehicle changes, or when in trips view mode
   useEffect(() => {
@@ -1584,7 +1615,7 @@ export default function App() {
       console.log('Fetching drivers logs due to panel/view change for vehicle:', selectedVehicle);
       fetchDriversLogs();
     }
-  }, [showLogsPanel, selectedVehicle, viewMode]); // Added viewMode dependency
+  }, [showLogsPanel, selectedVehicle, viewMode, fetchDriversLogs]); // Added viewMode dependency
 
   return (
     <div style={{ height: "100%", width: "100%", position: "relative" }}>

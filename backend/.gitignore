@@ -10,4 +10,4 @@ phantom-cleanup/*.json
 # Backend development artifacts
 backend/sls_env/
 backend/src/handlers/__pycache__/
-**/__pycache__/ 
+**/__pycache__/ .coverage

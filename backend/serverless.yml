@@ -17,7 +17,6 @@ provider:
   httpApi:
     cors: true
   deploymentBucket:
-    name: location-backend-serverless-deployments-${self:provider.stage}
     blockPublicAccess: true
   environment:
     # Reflecting actual table names currently in AWS
@@ -140,23 +139,6 @@ resources:
             - !Ref HttpApi
             - ".execute-api.${self:provider.region}.amazonaws.com"
   Resources:
-    # Create deployment bucket for Serverless Framework
-    ServerlessDeploymentBucket:
-      Type: AWS::S3::Bucket
-      Properties:
-        BucketName: location-backend-serverless-deployments-${self:provider.stage}
-        PublicAccessBlockConfiguration:
-          BlockPublicAcls: true
-          BlockPublicPolicy: true
-          IgnorePublicAcls: true
-          RestrictPublicBuckets: true
-        VersioningConfiguration:
-          Status: Enabled
-        BucketEncryption:
-          ServerSideEncryptionConfiguration:
-            - ServerSideEncryptionByDefault:
-                SSEAlgorithm: AES256
-    
     # Create new tables with -v2 suffix for epoch timestamp schema
     LocationsTableV2:
       Type: AWS::DynamoDB::Table

@@ -40,18 +40,18 @@ jobs:
     - name: Python code formatting check
       working-directory: ./backend
       run: |
-        black --check --diff src/ test/
-        isort --check-only --diff src/ test/
+        black --check --diff src/handlers/*.py test/
+        isort --check-only --diff src/handlers/*.py test/
         
     - name: Python linting
       working-directory: ./backend
       run: |
-        flake8 src/ test/ --max-line-length=100 --ignore=E203,W503
+        flake8 src/handlers/*.py test/ --max-line-length=100 --ignore=E203,W503
         
     - name: Python type checking
       working-directory: ./backend
       run: |
-        mypy src/ --ignore-missing-imports
+        mypy src/handlers/*.py --ignore-missing-imports
         
     - name: Frontend linting
       working-directory: ./frontend

@@ -163,6 +163,19 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: eu-central-1
         
+    - name: Create deployment bucket if it doesn't exist
+      run: |
+        BUCKET_NAME="location-backend-sls-deployments-${{ matrix.stage }}"
+        if ! aws s3 ls "s3://$BUCKET_NAME" 2>&1 | grep -q 'NoSuchBucket'; then
+          echo "Bucket $BUCKET_NAME already exists"
+        else
+          echo "Creating deployment bucket: $BUCKET_NAME"
+          aws s3 mb "s3://$BUCKET_NAME" --region eu-central-1
+          aws s3api put-public-access-block \
+            --bucket "$BUCKET_NAME" \
+            --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+        fi
+        
     - name: Deploy to ${{ matrix.stage }}
       run: |
         serverless deploy --stage ${{ matrix.stage }} --region eu-central-1

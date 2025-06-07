@@ -17,6 +17,7 @@ provider:
   httpApi:
     cors: true
   deploymentBucket:
+    name: location-backend-sls-deployments-${self:provider.stage}
     blockPublicAccess: true
   environment:
     # Reflecting actual table names currently in AWS

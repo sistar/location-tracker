@@ -2,6 +2,17 @@ import { useEffect, useState, useRef, FormEvent, useCallback } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L, { LatLngBoundsExpression } from "leaflet";
+import type {
+  LocationApiResponse,
+  HistoryApiItem,
+  DriversLogsApiResponse,
+  GeocodeApiResponse,
+  Location,
+  SessionInfo,
+  DriversLogEntry,
+  PastSession,
+  EditingAddress
+} from './types';
 
 // Fix for default marker icons in react-leaflet
 // Safe way to update the icon URLs without TypeScript errors
@@ -34,116 +45,6 @@ const SCAN_SESSIONS_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws
 
 const MAX_ADDRESS_DISTANCE = 1000; // Maximum distance (meters) for a valid address
 
-// API Response Types
-interface LocationApiResponse {
-  lat: string;
-  lon: string;
-  timestamp: number;
-}
-
-interface HistoryApiItem {
-  lat: string;
-  lon: string;
-  timestamp: number;
-  timestamp_str?: string;
-  segment_type?: string;
-  stop_duration_seconds?: number;
-  isWithinSession?: boolean;
-  isExtendedContext?: boolean;
-  address?: string;
-}
-
-interface DriversLogsApiResponse {
-  logs: DriversLogEntry[];
-}
-
-interface GeocodeApiResponse {
-  address: string;
-  error?: string;
-}
-
-type Location = {
-  lat: number;
-  lon: number;
-  timestamp: number;  // Now a number (epoch timestamp)
-  timestamp_str?: string;  // Human-readable format added by backend
-  segment_type?: string;
-  stop_duration_seconds?: number;
-  address?: string;
-  // New properties for session debugging
-  isWithinSession?: boolean;  // True if point is within detected session boundaries
-  isExtendedContext?: boolean;  // True if point is outside session (context data)
-};
-
-type SessionInfo = {
-  duration: number;
-  distance: number;
-  startTime?: number;       // Start timestamp (epoch)
-  endTime?: number;         // End timestamp (epoch)
-  startTime_str?: string;   // Human-readable format
-  endTime_str?: string;     // Human-readable format
-  sessionId?: string;
-  movingTime?: number;      // Moving time in minutes
-  stoppedTime?: number;     // Stopped time in minutes
-  avgSpeed?: number;        // Average speed in km/h during moving segments
-  startAddress?: string;
-  endAddress?: string;
-  extendedStartTime?: number;
-  extendedEndTime?: number;
-  totalPointsLoaded?: number;
-  sessionPointsCount?: number;
-  contextPointsCount?: number;
-  hasDataMismatch?: boolean;
-  mismatchDetails?: string;
-};
-
-type RoutePoint = Location;
-
-type DriversLogEntry = {
-  id: string;
-  timestamp: number;  // Creation timestamp (epoch)
-  timestamp_str?: string;  // Human-readable format
-  startTime: number;  // Start timestamp (epoch)
-  endTime: number;    // End timestamp (epoch)
-  distance: number;
-  duration: number;
-  purpose: string;
-  notes: string;
-  vehicleId?: string;  // Vehicle ID associated with this log entry
-  startAddress?: string;
-  endAddress?: string;
-  route?: RoutePoint[];
-};
-
-type EditingAddress = {
-  id: string;
-  type: 'start' | 'end' | 'stop';
-  index?: number;
-  current: string;
-  originalLat: number;
-  originalLon: number;
-  newLat?: number;
-  newLon?: number;
-  validationError?: string;
-};
-
-type PastSession = {
-  id: string;
-  vehicleId: string;
-  startTime: number;  // Start timestamp (epoch)
-  endTime: number;    // End timestamp (epoch)
-  duration: number;
-  distance: number;
-  movingTime: number;
-  stoppedTime: number;
-  avgSpeed: number;
-  numPoints: number;
-  numStops: number;
-  startLat: number;
-  startLon: number;
-  endLat: number;
-  endLon: number;
-};
 
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371000; // Earth radius in meters

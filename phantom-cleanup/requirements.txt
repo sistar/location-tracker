@@ -82,7 +82,7 @@ googleapis-common-protos==1.68.0
 grpc-google-iam-v1==0.14.0
 grpcio==1.70.0
 grpcio-status==1.70.0
-h11==0.14.0
+h11==0.16.0
 habluetooth==3.4.1
 hass-nabucasa==0.81.1
 home-assistant-bluetooth==1.12.2

@@ -188,7 +188,7 @@ resources:
     VehicleLocationRule:
       Type: AWS::IoT::TopicRule
       Properties:
-        RuleName: VehicleLocationProcessor
+        RuleName: VehicleLocationProcessor${self:provider.stage}
         TopicRulePayload:
           Sql: "SELECT * FROM '+/location'"
           Actions:
@@ -203,4 +203,4 @@ resources:
         FunctionName: !GetAtt ProcessLocationDataLambdaFunction.Arn
         Action: lambda:InvokeFunction
         Principal: iot.amazonaws.com
-        SourceArn: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:rule/VehicleLocationProcessor"
+        SourceArn: !Sub "arn:aws:iot:${AWS::Region}:${AWS::AccountId}:rule/VehicleLocationProcessor${self:provider.stage}"

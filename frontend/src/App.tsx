@@ -13,6 +13,12 @@ import type {
   PastSession,
   EditingAddress
 } from './types';
+import {
+  API_ENDPOINTS,
+  MAX_ADDRESS_DISTANCE,
+  haversine,
+  formatISOTimestamp
+} from './services';
 
 // Fix for default marker icons in react-leaflet
 // Safe way to update the icon URLs without TypeScript errors
@@ -33,32 +39,6 @@ try {
   console.error("Error setting up Leaflet icons:", e);
 }
 
-// Original API endpoints
-const LOCATION_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/location/latest";
-const HISTORY_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/location/dynamic-history";
-const RAW_HISTORY_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/location/raw-history";
-const DRIVERS_LOG_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/drivers-log";
-const DRIVERS_LOGS_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/drivers-logs";
-const GEOCODE_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/geocode";
-const VEHICLES_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/vehicles";
-const SCAN_SESSIONS_API = "https://cfqttt9fvi.execute-api.eu-central-1.amazonaws.com/scan-sessions";
-
-const MAX_ADDRESS_DISTANCE = 1000; // Maximum distance (meters) for a valid address
-
-
-function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371000; // Earth radius in meters
-  const toRad = (x: number) => (x * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
 
 
 export default function App() {
@@ -105,7 +85,7 @@ export default function App() {
   const fetchLocation = useCallback(async () => {
     try {
       setError(null);
-      const url = `${LOCATION_API}?vehicle_id=${selectedVehicle}`;
+      const url = `${API_ENDPOINTS.LOCATION}?vehicle_id=${selectedVehicle}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch location");
       const data: LocationApiResponse = await res.json();
@@ -137,7 +117,7 @@ export default function App() {
     
     try {
       // Create a URL with query parameters
-      const apiUrl = `${GEOCODE_API}?operation=reverse&lat=${lat}&lon=${lon}`;
+      const apiUrl = `${API_ENDPOINTS.GEOCODE}?operation=reverse&lat=${lat}&lon=${lon}`;
       console.log(`Fetching address from:`, apiUrl);
       
       // Add timeout to the request
@@ -195,7 +175,7 @@ export default function App() {
   const geocodeAddress = async (address: string): Promise<{lat: number, lon: number} | null> => {
     try {
       // Create a URL with query parameters
-      const apiUrl = `${GEOCODE_API}?operation=search&query=${encodeURIComponent(address)}`;
+      const apiUrl = `${API_ENDPOINTS.GEOCODE}?operation=search&query=${encodeURIComponent(address)}`;
       
       // Use the proxy URL
       const response = await fetch(apiUrl);
@@ -254,7 +234,7 @@ export default function App() {
         new_lon: newLon.toString()
       });
       
-      const response = await fetch(`${GEOCODE_API}?${params}`);
+      const response = await fetch(`${API_ENDPOINTS.GEOCODE}?${params}`);
       
       if (!response.ok) {
         throw new Error('Validation failed');
@@ -463,7 +443,7 @@ export default function App() {
     try {
       // Use a HEAD request to check if the session exists
       // This is a simplified approach - in a real system, you might have a dedicated API endpoint
-      const response = await fetch(`${DRIVERS_LOG_API}?sessionId=${sessionId}&vehicle_id=${selectedVehicle}`, {
+      const response = await fetch(`${API_ENDPOINTS.DRIVERS_LOG}?sessionId=${sessionId}&vehicle_id=${selectedVehicle}`, {
         method: 'HEAD',
       });
       
@@ -482,32 +462,11 @@ export default function App() {
   }, [selectedVehicle]);
 
   // Helper function to format timestamps in ISO format without timezone issues
-  const formatISOTimestamp = (timestamp: string | number | Date): string => {
-    let date: Date;
-    
-    if (timestamp instanceof Date) {
-      date = timestamp;
-    } else if (typeof timestamp === 'number') {
-      // Convert epoch seconds to milliseconds for JS Date
-      date = new Date(timestamp * 1000);
-    } else {
-      // If it's a string that looks like a number (epoch), convert it
-      if (timestamp && !isNaN(Number(timestamp))) {
-        date = new Date(Number(timestamp) * 1000);
-      } else {
-        // Otherwise treat as ISO string
-        date = new Date(timestamp);
-      }
-    }
-    
-    // Format as ISO string and remove the milliseconds and 'Z' (UTC indicator)
-    return date.toISOString().split('.')[0];
-  };
 
   const fetchHistory = useCallback(async (startTimestamp?: string | number, timeWindowHours: number = 6) => {
     try {
       // Build URL with appropriate parameters
-      let url = `${HISTORY_API}?vehicle_id=${selectedVehicle}`;
+      let url = `${API_ENDPOINTS.HISTORY}?vehicle_id=${selectedVehicle}`;
       
       // If startTimestamp is provided, add it to URL
       if (startTimestamp) {
@@ -515,7 +474,7 @@ export default function App() {
         // Otherwise format it as ISO
         const timestampValue = typeof startTimestamp === 'number' || /^\d+$/.test(String(startTimestamp))
           ? startTimestamp
-          : formatISOTimestamp(startTimestamp);
+          : formatISOTimestamp(Number(startTimestamp));
         url += `&start_timestamp=${timestampValue}`;
       }
       
@@ -736,9 +695,9 @@ export default function App() {
       
       console.log('📤 Sending save payload:', savePayload);
       console.log('🚗 Vehicle ID being saved:', selectedVehicle);
-      console.log('📍 API endpoint:', DRIVERS_LOG_API);
+      console.log('📍 API endpoint:', API_ENDPOINTS.DRIVERS_LOG);
       
-      const response = await fetch(DRIVERS_LOG_API, {
+      const response = await fetch(API_ENDPOINTS.DRIVERS_LOG, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -788,7 +747,7 @@ export default function App() {
       // Always try fetching without vehicle filter to see if log exists under different vehicle
       console.log('🔍 Checking if log exists without vehicle filter...');
       try {
-        const testResponse = await fetch(DRIVERS_LOGS_API);
+        const testResponse = await fetch(API_ENDPOINTS.DRIVERS_LOGS);
         if (testResponse.ok) {
           const testData = await testResponse.json();
           console.log('📊 All logs (no filter):', testData);
@@ -827,7 +786,7 @@ export default function App() {
       console.log('🔍 Fetching drivers logs for vehicle:', selectedVehicle);
       
       // Add vehicle_id parameter to filter logs by vehicle
-      const url = `${DRIVERS_LOGS_API}?vehicle_id=${selectedVehicle}`;
+      const url = `${API_ENDPOINTS.DRIVERS_LOGS}?vehicle_id=${selectedVehicle}`;
       console.log('📍 Drivers logs API URL:', url);
       
       const response = await fetch(url);
@@ -891,7 +850,7 @@ export default function App() {
       setSelectedSession(null);
       
       // Fetch the route data - include vehicle_id parameter
-      const response = await fetch(`${DRIVERS_LOGS_API}?id=${logId}&route=true&vehicle_id=${selectedVehicle}`);
+      const response = await fetch(`${API_ENDPOINTS.DRIVERS_LOGS}?id=${logId}&route=true&vehicle_id=${selectedVehicle}`);
       
       if (!response.ok) {
         console.error('API error:', response.status, response.statusText);
@@ -949,7 +908,7 @@ export default function App() {
   const fetchVehicles = async () => {
     try {
       setVehiclesLoading(true);
-      const response = await fetch(VEHICLES_API);
+      const response = await fetch(API_ENDPOINTS.VEHICLES);
       
       if (!response.ok) {
         console.error('API error:', response.status, response.statusText);
@@ -1012,7 +971,7 @@ export default function App() {
       setSelectedSession(null);
       
       // Construct URL based on scan range selection
-      let url = `${SCAN_SESSIONS_API}?vehicle_id=${selectedVehicle}`;
+      let url = `${API_ENDPOINTS.SCAN_SESSIONS}?vehicle_id=${selectedVehicle}`;
       if (daysToScan === 0) {
         // For "All Data" option, don't add days parameter or use a special value
         url += '&days=all';
@@ -1057,7 +1016,7 @@ export default function App() {
       console.log('Session:', new Date(session.startTime * 1000).toISOString(), 'to', new Date(session.endTime * 1000).toISOString());
       
       // Use the exact API call format that was confirmed to work manually
-      const workingUrl = `${HISTORY_API}?start_timestamp=${new Date(session.startTime * 1000).toISOString()}&vehicle_id=${session.vehicleId}&end_timestamp=${new Date(session.endTime * 1000).toISOString()}`;
+      const workingUrl = `${API_ENDPOINTS.HISTORY}?start_timestamp=${new Date(session.startTime * 1000).toISOString()}&vehicle_id=${session.vehicleId}&end_timestamp=${new Date(session.endTime * 1000).toISOString()}`;
       console.log('API call:', workingUrl);
       
       const response = await fetch(workingUrl);
@@ -1220,7 +1179,7 @@ export default function App() {
       setError(null);
       
       // Build the URL with parameters
-      const url = `${RAW_HISTORY_API}?vehicle_id=${selectedVehicle}&days=${days}`;
+      const url = `${API_ENDPOINTS.RAW_HISTORY}?vehicle_id=${selectedVehicle}&days=${days}`;
       console.log(`Fetching raw GPS data from: ${url}`);
       
       // Show loading state

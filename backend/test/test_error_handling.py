@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import handlers.geocode_service
+
 # Import all handlers to test
 import handlers.get_latest_location
 import handlers.get_location_history

@@ -4,9 +4,14 @@ from typing import Any, Dict
 
 import pytest
 
-from handlers.gps_processing import (calculate_speed_kmh, get_location_history,
-                                     haversine_distance, is_outlier_temporal,
-                                     parse_timestamp, reset_location_history)
+from handlers.gps_processing import (
+    calculate_speed_kmh,
+    get_location_history,
+    haversine_distance,
+    is_outlier_temporal,
+    parse_timestamp,
+    reset_location_history,
+)
 
 
 class TestLocationHistoryManagement:

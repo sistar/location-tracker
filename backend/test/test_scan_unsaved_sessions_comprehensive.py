@@ -9,10 +9,13 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from handlers.scan_unsaved_sessions import (clean_phantom_locations,
-                                            decimal_default,
-                                            fetch_vehicle_locations, handler,
-                                            haversine)
+from handlers.scan_unsaved_sessions import (
+    clean_phantom_locations,
+    decimal_default,
+    fetch_vehicle_locations,
+    handler,
+    haversine,
+)
 
 
 class TestUtilityFunctions:

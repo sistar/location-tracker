@@ -7,8 +7,11 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from handlers.get_drivers_logs import (decimal_default,
-                                       fetch_locations_by_time_range, handler)
+from handlers.get_drivers_logs import (
+    decimal_default,
+    fetch_locations_by_time_range,
+    handler,
+)
 
 
 class TestUtilityFunctions:

@@ -13,6 +13,7 @@ import handlers.get_latest_location
 import handlers.get_location_history
 import handlers.get_raw_location_history
 import handlers.get_vehicle_ids
+
 # Import handlers to test
 import handlers.processor
 import handlers.save_drivers_log

@@ -8,11 +8,14 @@ import boto3
 import pytest
 from moto import mock_aws
 
-from handlers.save_drivers_log import (check_for_overlapping_logs,
-                                       check_session_already_saved,
-                                       convert_floats_to_decimal,
-                                       convert_timestamp_to_epoch,
-                                       decimal_default, handler)
+from handlers.save_drivers_log import (
+    check_for_overlapping_logs,
+    check_session_already_saved,
+    convert_floats_to_decimal,
+    convert_timestamp_to_epoch,
+    decimal_default,
+    handler,
+)
 
 
 class TestUtilityFunctions:

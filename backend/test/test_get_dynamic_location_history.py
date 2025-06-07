@@ -7,15 +7,18 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from handlers.get_dynamic_location_history import (calculate_median_position,
-                                                   calculate_time_window,
-                                                   clean_phantom_locations,
-                                                   create_api_response,
-                                                   decimal_default,
-                                                   extend_session_points,
-                                                   handler, haversine,
-                                                   parse_timestamp_safely,
-                                                   query_location_range)
+from handlers.get_dynamic_location_history import (
+    calculate_median_position,
+    calculate_time_window,
+    clean_phantom_locations,
+    create_api_response,
+    decimal_default,
+    extend_session_points,
+    handler,
+    haversine,
+    parse_timestamp_safely,
+    query_location_range,
+)
 
 
 class TestUtilityFunctions:

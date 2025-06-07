@@ -48,6 +48,11 @@ provider:
 functions:
   processLocationData:
     handler: src/handlers/processor.process_location
+    timeout: 300  # 5 minutes for batch processing
+    events:
+      - httpApi:
+          path: /process-gps
+          method: post
   getLatestLocation:
     handler: src/handlers/get_latest_location.handler
     events:

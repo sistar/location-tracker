@@ -914,11 +914,30 @@ export default function App() {
       const data = await response.json();
       console.log('✅ Received drivers logs response:', data);
       console.log('📊 Logs array length:', data.logs ? data.logs.length : 'undefined');
-      console.log('📊 Logs array content:', data.logs);
       
       if (data.logs && Array.isArray(data.logs)) {
-        setDriversLogs(data.logs);
-        console.log('✅ Set drivers logs state with', data.logs.length, 'entries');
+        // Enhanced debugging: log each trip's vehicle ID
+        console.log('🚗 Vehicle ID analysis:');
+        data.logs.forEach((log: any, index: number) => {
+          console.log(`  Log ${index}: id=${log.id}, vehicleId="${log.vehicleId}", purpose="${log.purpose}"`);
+        });
+        
+        // Client-side filtering as backup - filter out logs that don't match the selected vehicle
+        const filteredLogs = data.logs.filter((log: any) => {
+          const logVehicleId = log.vehicleId;
+          const matches = logVehicleId === selectedVehicle;
+          
+          if (!matches) {
+            console.warn(`⚠️ Filtering out log ${log.id}: vehicleId="${logVehicleId}" doesn't match selected="${selectedVehicle}"`);
+          }
+          
+          return matches;
+        });
+        
+        console.log(`📊 After client-side filtering: ${filteredLogs.length}/${data.logs.length} logs match vehicle "${selectedVehicle}"`);
+        
+        setDriversLogs(filteredLogs);
+        console.log('✅ Set drivers logs state with', filteredLogs.length, 'entries');
       } else {
         console.warn('⚠️ Invalid logs data structure:', data);
         setDriversLogs([]);
@@ -937,8 +956,9 @@ export default function App() {
     try {
       setRouteLoading(true);
       
-      // Clear any previously selected log route
+      // Clear any previously selected log route and session
       setHistory([]);
+      setSelectedSession(null);
       
       // Fetch the route data - include vehicle_id parameter
       const response = await fetch(`${DRIVERS_LOGS_API}?id=${logId}&route=true&vehicle_id=${selectedVehicle}`);
@@ -956,17 +976,18 @@ export default function App() {
           point && typeof point.lat === 'number' && typeof point.lon === 'number'
         );
         
-        // Set the selected log with route data
+        // Set the selected log FIRST to prevent race conditions
         setSelectedLog({
           ...data,
           route: validRoutePoints
         });
         
+        // Reset live tracking before setting history
+        setLocation(null);
+        setIsLiveTracking(false);
+        
         // Also set the route points to history for display on the map
         setHistory(validRoutePoints);
-        
-        // Reset live tracking when viewing a historical route
-        setLocation(null);
         
         // Update the map to center on the route
         if (validRoutePoints.length > 0) {
@@ -979,6 +1000,10 @@ export default function App() {
           console.warn('Route contains no valid points with coordinates');
           setError('No valid route points found. The route may be empty.');
         }
+        
+        // Now switch to map view after everything is set up
+        setViewMode('live');
+        setShowTripsOverview(false);
       } else {
         throw new Error('No route data available');
       }
@@ -1508,33 +1533,47 @@ export default function App() {
   }, [selectedVehicle]); // This will run when selectedVehicle is first set
   
   useEffect(() => {
-    // If we're viewing a historical route or session, don't set up polling
-    if (selectedLog || selectedSession) return;
-    
-    // Only set up location tracking if we're in live mode
-    if (viewMode === 'live') {
-      // Handle different modes
-      if (isRawGpsMode) {
-        // When in raw GPS mode, fetch the raw data
-        fetchRawGpsData(rawGpsDays);
-        } else {
-        // Normal mode - fetch location and history
-        fetchLocation();
-        fetchHistory(historyStartTime, timeWindow);
-        
-        // Only set up interval for polling if in live tracking mode
-        let interval: NodeJS.Timeout | null = null;
-        if (isLiveTracking) {
-          interval = setInterval(fetchLocation, 10000);
-        }
-        
-        // Clean up interval on unmount or when mode changes
-        return () => {
-          if (interval) clearInterval(interval);
-        };
-      }
+    // Early return if viewing a historical route or session
+    if (selectedLog || selectedSession) {
+      console.log('Viewing historical data, skipping live tracking setup');
+      return;
     }
-  }, [selectedLog, selectedSession, selectedVehicle, historyStartTime, timeWindow, isLiveTracking, isRawGpsMode, rawGpsDays, viewMode]); // Added viewMode dependency
+    
+    // Early return if not in live mode
+    if (viewMode !== 'live') {
+      console.log('Not in live mode, skipping live tracking setup');
+      return;
+    }
+    
+    // Early return if no vehicle selected
+    if (!selectedVehicle) {
+      console.log('No vehicle selected, skipping live tracking setup');
+      return;
+    }
+    
+    console.log('Setting up live tracking for vehicle:', selectedVehicle);
+    
+    // Handle different modes
+    if (isRawGpsMode) {
+      // When in raw GPS mode, fetch the raw data
+      fetchRawGpsData(rawGpsDays);
+    } else {
+      // Normal mode - fetch location and history
+      fetchLocation();
+      fetchHistory(historyStartTime, timeWindow);
+      
+      // Only set up interval for polling if in live tracking mode
+      let interval: NodeJS.Timeout | null = null;
+      if (isLiveTracking) {
+        interval = setInterval(fetchLocation, 10000);
+      }
+      
+      // Clean up interval on unmount or when mode changes
+      return () => {
+        if (interval) clearInterval(interval);
+      };
+    }
+  }, [selectedLog, selectedSession, selectedVehicle, historyStartTime, timeWindow, isLiveTracking, isRawGpsMode, rawGpsDays, viewMode]);
   
   // Fetch logs when the logs panel is opened, when selected vehicle changes, or when in trips view mode
   useEffect(() => {
@@ -1920,8 +1959,7 @@ export default function App() {
                         <button
                           onClick={() => {
                             fetchLogRoute(log.id);
-                            setViewMode('live'); // Switch to map view
-                            setShowTripsOverview(false);
+                            // Don't switch view modes here - let fetchLogRoute handle it
                           }}
                           disabled={routeLoading}
                           style={{ 
@@ -2363,43 +2401,72 @@ export default function App() {
             position: 'absolute', 
             bottom: '10px', 
             left: '10px', 
+            right: 'auto',
             zIndex: 1000, 
-            backgroundColor: 'rgba(0,0,0,0.7)', 
-            padding: '10px', 
-            borderRadius: '5px',
-            maxWidth: '300px',
+            backgroundColor: 'rgba(0,0,0,0.8)', 
+            padding: '12px', 
+            borderRadius: '6px',
+            width: 'auto',
+            maxWidth: 'min(400px, calc(100vw - 40px))',
+            minWidth: '280px',
+            maxHeight: '80vh',
+            overflowY: 'auto',
             color: 'white',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            wordWrap: 'break-word',
+            border: '1px solid rgba(255,255,255,0.1)'
           }}>
 
         {selectedLog ? (
           <div style={{ 
             marginTop: '5px',
             backgroundColor: 'rgba(0,0,0,0.5)',
-            padding: '5px',
-            borderRadius: '3px'
+            padding: '8px',
+            borderRadius: '3px',
+            border: '1px solid #007bff'
           }}>
-            <div style={{ fontSize: '0.9em', color: '#90caf9' }}>
-              {new Date(selectedLog.startTime * 1000).toLocaleDateString()} {new Date(selectedLog.startTime * 1000).toLocaleTimeString()} - {new Date(selectedLog.endTime * 1000).toLocaleTimeString()}
+            <div style={{ 
+              fontSize: '0.85em', 
+              color: '#90caf9', 
+              marginBottom: '5px',
+              fontWeight: 'bold'
+            }}>
+              📋 Viewing Trip: {selectedLog.purpose || 'Unspecified'}
             </div>
-            <div style={{ fontSize: '0.9em' }}>
-              <strong>Purpose:</strong> {selectedLog.purpose || 'Not specified'}
+            <div style={{ fontSize: '0.8em', color: '#ddd', marginBottom: '5px' }}>
+              {new Date(selectedLog.startTime * 1000).toLocaleDateString()} 
+              {' '}
+              {new Date(selectedLog.startTime * 1000).toLocaleTimeString()} - {new Date(selectedLog.endTime * 1000).toLocaleTimeString()}
             </div>
+            <div style={{ fontSize: '0.8em', marginBottom: '8px' }}>
+              <strong>Distance:</strong> {(selectedLog.distance / 1000).toFixed(2)} km | <strong>Duration:</strong> {Math.round(selectedLog.duration)} min
+            </div>
+            {selectedLog.startAddress && (
+              <div style={{ fontSize: '0.8em', marginBottom: '3px' }}>
+                <strong>From:</strong> <span style={{ color: '#90caf9' }}>{selectedLog.startAddress}</span>
+              </div>
+            )}
+            {selectedLog.endAddress && (
+              <div style={{ fontSize: '0.8em', marginBottom: '8px' }}>
+                <strong>To:</strong> <span style={{ color: '#90caf9' }}>{selectedLog.endAddress}</span>
+              </div>
+            )}
             {!showLogsPanel && (
               <button
                 onClick={returnToLiveTracking}
                 style={{ 
                   marginTop: '5px',
-                  padding: '3px 8px',
+                  padding: '6px 12px',
                   backgroundColor: '#4285F4',
                   color: 'white',
                   border: 'none',
-                  borderRadius: '3px',
+                  borderRadius: '4px',
                   cursor: 'pointer',
-                  fontSize: '0.8em'
+                  fontSize: '0.8em',
+                  width: '100%'
                 }}
               >
-                Return to Live Tracking
+                ← Return to Live Tracking
               </button>
             )}
           </div>

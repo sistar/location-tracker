@@ -1,0 +1,251 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  # Code Quality Checks
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install Python dependencies
+      working-directory: ./backend
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        pip install black isort flake8 mypy
+        
+    - name: Install Node.js dependencies
+      working-directory: ./frontend
+      run: npm ci
+      
+    - name: Python code formatting check
+      working-directory: ./backend
+      run: |
+        black --check --diff src/ test/
+        isort --check-only --diff src/ test/
+        
+    - name: Python linting
+      working-directory: ./backend
+      run: |
+        flake8 src/ test/ --max-line-length=100 --ignore=E203,W503
+        
+    - name: Python type checking
+      working-directory: ./backend
+      run: |
+        mypy src/ --ignore-missing-imports
+        
+    - name: Frontend linting
+      working-directory: ./frontend
+      run: npm run lint
+      
+    - name: Check for large files
+      run: |
+        find . -type f -size +10M -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./.pytest_cache/*" | head -10
+
+  # Test Coverage Check
+  coverage-check:
+    name: Coverage Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+        
+    - name: Run tests with coverage
+      run: python run_coverage.py
+      
+    - name: Coverage comment
+      uses: py-cov-action/python-coverage-comment-action@v3
+      with:
+        GITHUB_TOKEN: ${{ github.token }}
+        COVERAGE_PATH: ./backend/coverage.xml
+        MINIMUM_COVERAGE: 75
+
+  # Dependency Security Check
+  dependency-check:
+    name: Dependency Security
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Python security check
+      working-directory: ./backend
+      run: |
+        pip install safety
+        safety check -r requirements.txt
+        
+    - name: Node.js security audit
+      working-directory: ./frontend
+      run: |
+        npm audit --audit-level moderate
+        
+    - name: Check for secrets
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+
+  # Infrastructure Validation
+  infra-validation:
+    name: Infrastructure Validation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install Serverless Framework
+      run: npm install -g serverless
+      
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Validate Serverless configuration
+      run: |
+        serverless config credentials --provider aws --key dummy --secret dummy
+        serverless package --stage dev
+        
+    - name: Check CloudFormation template
+      run: |
+        # Basic validation of generated CloudFormation
+        find .serverless -name "*.json" -exec echo "Validating {}" \; -exec python -m json.tool {} > /dev/null \;
+
+  # Documentation Check
+  docs-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check for README updates
+      run: |
+        if [ ! -f README.md ]; then
+          echo "❌ README.md is missing"
+          exit 1
+        fi
+        
+        # Check if README has been updated recently for significant changes
+        if git diff --name-only HEAD~1 | grep -E '\.(py|ts|tsx|yml|yaml)$' | wc -l | awk '{print $1}' | xargs -I {} test {} -gt 5; then
+          if ! git diff --name-only HEAD~1 | grep -q README.md; then
+            echo "⚠️ Many code files changed but README.md not updated"
+            echo "Consider updating documentation for significant changes"
+          fi
+        fi
+        
+    - name: Check CLAUDE.md files
+      run: |
+        echo "📝 Checking CLAUDE.md files..."
+        find . -name "CLAUDE.md" -exec echo "Found: {}" \;
+        
+    - name: Validate markdown files
+      uses: gaurav-nelson/github-action-markdown-link-check@v1
+      with:
+        use-quiet-mode: 'yes'
+        use-verbose-mode: 'yes'
+
+  # Performance Impact Check
+  performance-impact:
+    name: Performance Impact
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+      
+    - name: Build and analyze bundle
+      working-directory: ./frontend
+      run: |
+        npm run build
+        
+        # Check bundle size
+        BUNDLE_SIZE=$(du -sk dist/ | cut -f1)
+        echo "Bundle size: ${BUNDLE_SIZE}KB"
+        
+        if [ $BUNDLE_SIZE -gt 5000 ]; then
+          echo "⚠️ Bundle size is large (${BUNDLE_SIZE}KB). Consider optimization."
+        fi
+        
+    - name: Comment bundle size
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+          
+          try {
+            const bundleSize = execSync('du -sk frontend/dist/', { encoding: 'utf8' }).split('\t')[0];
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `📊 **Bundle Size Report**\n\nFrontend bundle size: **${bundleSize}KB**\n\n${bundleSize > 5000 ? '⚠️ Bundle size is quite large. Consider optimization.' : '✅ Bundle size looks good!'}`
+            });
+          } catch (error) {
+            console.log('Could not determine bundle size');
+          }

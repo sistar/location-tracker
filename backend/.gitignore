@@ -1,0 +1,13 @@
+# Phantom cleanup data analysis
+phantom-cleanup/gps_logs/
+phantom-cleanup/venv/
+phantom-cleanup/.ipynb_checkpoints/
+phantom-cleanup/*.json
+
+# VS Code settings
+.vscode/
+
+# Backend development artifacts
+backend/sls_env/
+backend/src/handlers/__pycache__/
+**/__pycache__/ 

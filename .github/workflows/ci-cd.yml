@@ -195,19 +195,7 @@ jobs:
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         AWS_DEFAULT_REGION: eu-central-1
         
-    - name: Update deployment status
-      uses: actions/github-script@v6
-      with:
-        script: |
-          github.rest.repos.createDeploymentStatus({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            deployment_id: context.payload.deployment?.id || 0,
-            state: 'success',
-            environment: '${{ matrix.stage }}',
-            environment_url: '${{ steps.deployment-info.outputs.api_endpoint }}',
-            description: 'Backend deployed successfully to ${{ matrix.stage }}'
-          });
+
 
   # Frontend Deployment Job
   frontend-deploy:

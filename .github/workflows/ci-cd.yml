@@ -138,6 +138,11 @@ jobs:
         cache: 'npm'
         cache-dependency-path: './backend/package-lock.json'
         
+    - name: Install backend dependencies
+      run: |
+        npm ci
+        pip install -r requirements.txt
+        
     - name: Install Serverless Framework
       run: npm install -g serverless
       
@@ -149,11 +154,6 @@ jobs:
         serverless config credentials --provider aws --key ${{ secrets.AWS_ACCESS_KEY_ID }} --secret ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       env:
         SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }}
-      
-    - name: Install backend dependencies
-      run: |
-        npm ci
-        pip install -r requirements.txt
         
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4

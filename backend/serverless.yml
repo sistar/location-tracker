@@ -8,10 +8,18 @@ plugins:
  - serverless-python-requirements
  - serverless-dotenv-plugin
 
+custom:
+  pythonRequirements:
+    usePoetry: true
+    poetryWithoutUrls: true
+    dockerizePip: false
+    slim: true
+    strip: false
+
 
 provider:
   name: aws
-  runtime: python3.12
+  runtime: python3.13
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'eu-central-1'}
   httpApi:

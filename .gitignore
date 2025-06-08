@@ -1,6 +1,22 @@
-backend/node_modules
+# Python dependencies
+*.egg-info/
+*.dist-info/
+__pycache__/
+bin/
+lib/
+*.pyc
+.venv/
+venv/
+
+# Node.js dependencies
+node_modules/
+
+# Serverless deployment artifacts
+.serverless/
+
+# Environment variables
 .env*
-.serverless
+
 # Logs
 logs
 *.log
@@ -10,23 +26,26 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Build outputs
+dist/
+dist-ssr/
 *.local
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-.vercel
-venv/
+
+# Deployment platforms
+.vercel/
+
+# Jupyter notebooks
 .ipynb_checkpoints/
 
 # Migration data files
@@ -40,7 +59,4 @@ phantom-cleanup/.ipynb_checkpoints/
 phantom-cleanup/*.json
 
 # Backend development artifacts
-backend/.vscode/
 backend/sls_env/
-backend/src/handlers/__pycache__/
-**/__pycache__/

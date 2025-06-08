@@ -136,10 +136,15 @@ jobs:
         virtualenvs-in-project: true
         installer-parallel: true
         
+    - name: Install dependencies
+      working-directory: ./backend
+      run: |
+        poetry install --with dev
+        
     - name: Python security check
       working-directory: ./backend
       run: |
-        poetry add --group dev safety
+        poetry run pip install safety
         poetry run safety check
         
     - name: Node.js security audit

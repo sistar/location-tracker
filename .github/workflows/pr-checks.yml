@@ -40,18 +40,21 @@ jobs:
     - name: Python code formatting check
       working-directory: ./backend
       run: |
-        black --check --diff src/handlers/*.py test/
-        isort --check-only --diff src/handlers/*.py test/
+        # Check only our application Python files (exclude bundled dependencies)
+        black --check --diff src/handlers/geocode_service.py src/handlers/get_drivers_logs.py src/handlers/get_dynamic_location_history.py src/handlers/get_latest_location.py src/handlers/get_location_history.py src/handlers/get_raw_location_history.py src/handlers/get_vehicle_ids.py src/handlers/gps_processing.py src/handlers/processor.py src/handlers/save_drivers_log.py src/handlers/scan_unsaved_sessions.py test/
+        isort --check-only --diff src/handlers/geocode_service.py src/handlers/get_drivers_logs.py src/handlers/get_dynamic_location_history.py src/handlers/get_latest_location.py src/handlers/get_location_history.py src/handlers/get_raw_location_history.py src/handlers/get_vehicle_ids.py src/handlers/gps_processing.py src/handlers/processor.py src/handlers/save_drivers_log.py src/handlers/scan_unsaved_sessions.py test/
         
     - name: Python linting
       working-directory: ./backend
       run: |
-        flake8 src/handlers/*.py test/ --max-line-length=100 --ignore=E203,W503
+        # Lint only our application Python files (exclude bundled dependencies)
+        flake8 src/handlers/geocode_service.py src/handlers/get_drivers_logs.py src/handlers/get_dynamic_location_history.py src/handlers/get_latest_location.py src/handlers/get_location_history.py src/handlers/get_raw_location_history.py src/handlers/get_vehicle_ids.py src/handlers/gps_processing.py src/handlers/processor.py src/handlers/save_drivers_log.py src/handlers/scan_unsaved_sessions.py test/ --max-line-length=100 --ignore=E203,W503
         
     - name: Python type checking
       working-directory: ./backend
       run: |
-        mypy src/handlers/*.py --ignore-missing-imports
+        # Type check only our application Python files (exclude bundled dependencies)
+        mypy src/handlers/geocode_service.py src/handlers/get_drivers_logs.py src/handlers/get_dynamic_location_history.py src/handlers/get_latest_location.py src/handlers/get_location_history.py src/handlers/get_raw_location_history.py src/handlers/get_vehicle_ids.py src/handlers/gps_processing.py src/handlers/processor.py src/handlers/save_drivers_log.py src/handlers/scan_unsaved_sessions.py --ignore-missing-imports
         
     - name: Frontend linting
       working-directory: ./frontend

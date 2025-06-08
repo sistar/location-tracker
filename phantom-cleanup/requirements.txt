@@ -96,7 +96,7 @@ ifaddr==0.2.0
 immutabledict==4.2.1
 intervaltree==3.1.0
 itsdangerous==2.2.0
-Jinja2==3.1.4
+Jinja2==3.1.6
 jmespath==1.0.1
 josepy==1.14.0
 libusb1==3.1.0

@@ -1,11 +1,11 @@
-import json
 from datetime import datetime
 from decimal import Decimal
+import json
 from unittest.mock import MagicMock, Mock, patch
 
 import boto3
-import pytest
 from moto import mock_aws
+import pytest
 
 from handlers.get_drivers_logs import (
     decimal_default,

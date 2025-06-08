@@ -1,12 +1,12 @@
-import json
-import os
 from datetime import datetime, timedelta
 from decimal import Decimal
+import json
+import os
 from unittest.mock import MagicMock, patch
 
 import boto3
-import pytest
 from moto import mock_aws
+import pytest
 
 import handlers.get_drivers_logs
 import handlers.get_latest_location

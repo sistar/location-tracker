@@ -1,13 +1,13 @@
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 import json
 import math
 import statistics
-from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from unittest.mock import MagicMock, Mock, patch
 
 import boto3
-import pytest
 from moto import mock_aws
+import pytest
 
 from handlers.scan_unsaved_sessions import (
     clean_phantom_locations,

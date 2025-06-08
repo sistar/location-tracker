@@ -1,7 +1,51 @@
-[build-system]
-requires = ["setuptools>=42.0", "wheel"]
-build-backend = "setuptools.build_meta"
+[project]
+name = "location-tracker-backen"
+version = "0.1.0"
+description = "APIs for a location tracker and driver's log app"
+authors = [
+    {name = "Ralf Sigmund",email = "ralf.sigmund@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+]
 
-[tool.pytest.ini_options]
-pythonpath = ["src"]
-testpaths = ["test"]
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"
+line_length = 88
+force_sort_within_sections = true
+lines_between_types = 1
+skip = [
+    "sls_env",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".serverless",
+    ".pytest_cache",
+    ".mypy_cache",
+    "Library/Caches",
+    "node_modules",
+    "dist",
+    "build",
+    "*.egg-info",
+    "*.egg",
+    "*.pyc",
+    "*.pyo",
+    "*.pyd",
+]
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.0"
+coverage = "^7.8.2"
+pytest-cov = "^6.1.1"
+moto = {extras = ["dynamodb"], version = "^5.1.5"}
+requests = "^2.32.3"
+boto3 = "^1.38.32"
+botocore = "^1.38.32"
+

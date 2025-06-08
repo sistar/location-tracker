@@ -3,9 +3,10 @@
 Script to run tests with coverage reporting for the location tracker backend.
 """
 
+import os
 import subprocess
 import sys
-import os
+
 
 def main():
     """Run tests with coverage."""

@@ -1,5 +1,5 @@
-import math
 from datetime import datetime, timedelta
+import math
 from typing import Any, Dict
 
 import pytest

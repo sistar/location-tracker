@@ -3,12 +3,13 @@
 Test processing one file to verify the approach works
 """
 
+from datetime import datetime
 import json
 import os
 import sys
+
 import boto3
 import requests
-from datetime import datetime
 
 # Configuration
 DYNAMODB_TABLE = "gps-tracking-service-dev-locations-v2"

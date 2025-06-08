@@ -1,7 +1,7 @@
 import datetime
+from decimal import Decimal
 import json
 import math
-from decimal import Decimal
 from unittest.mock import MagicMock, call, patch
 
 import pytest

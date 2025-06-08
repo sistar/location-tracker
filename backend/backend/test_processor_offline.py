@@ -4,13 +4,13 @@ Offline test for processor.py logic
 Processes GPS data from JSONL file through processor logic without DynamoDB dependency
 """
 
+import datetime
+from decimal import Decimal
 import json
 import math
-import datetime
-import sys
 import os
+import sys
 from typing import Any, Dict, List
-from decimal import Decimal
 
 # Add the handlers directory to the path so we can import processor functions
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src', 'handlers'))

@@ -6,14 +6,15 @@ Reprocess GPS data with enhanced temporal-aware outlier detection
 3. Send all raw data in chronological order as a batch to the lambda function
 """
 
+from datetime import datetime
 import json
 import os
 import sys
-import boto3
-from datetime import datetime
-from typing import List, Dict, Any
 import time
-from boto3.dynamodb.conditions import Key, Attr
+from typing import Any, Dict, List
+
+import boto3
+from boto3.dynamodb.conditions import Attr, Key
 
 # Configuration
 GPS_LOGS_DIR = "/Users/ralf.sigmund/GitHub/mp_m5_fahrtenbuch/gps_logs/gps_logs"

@@ -3,13 +3,14 @@
 Reprocess a single GPS file with enhanced temporal-aware outlier detection
 """
 
+from datetime import datetime
 import json
 import os
 import sys
+import time
+
 import boto3
 import requests
-from datetime import datetime
-import time
 
 # Configuration
 DYNAMODB_TABLE = "gps-tracking-service-dev-locations-v2"

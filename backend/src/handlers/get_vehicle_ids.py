@@ -1,7 +1,7 @@
 # src/handlers/get_vehicle_ids.py
+from decimal import Decimal
 import json
 import os
-from decimal import Decimal
 
 import boto3
 

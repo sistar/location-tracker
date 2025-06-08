@@ -1,12 +1,12 @@
-import json
-import time
 from datetime import datetime
 from decimal import Decimal
+import json
+import time
 from unittest.mock import MagicMock, Mock, patch
 
 import boto3
-import pytest
 from moto import mock_aws
+import pytest
 
 from handlers.save_drivers_log import (
     check_for_overlapping_logs,

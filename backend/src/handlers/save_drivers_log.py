@@ -1,8 +1,8 @@
+from datetime import datetime
+from decimal import Decimal
 import json
 import os
 import time
-from datetime import datetime
-from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key

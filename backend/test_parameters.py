@@ -3,9 +3,10 @@
 Test different parameter combinations for GPS processing
 """
 
+import os
 import subprocess
 import sys
-import os
+
 
 def test_parameters(outlier_threshold, min_movement, description=""):
     """Test a specific parameter combination."""

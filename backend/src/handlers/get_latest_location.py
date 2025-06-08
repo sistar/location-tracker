@@ -1,8 +1,8 @@
 # src/handlers/get_latest_location.py
-import json
-import os
 from datetime import datetime
 from decimal import Decimal
+import json
+import os
 
 import boto3
 from boto3.dynamodb.conditions import Key

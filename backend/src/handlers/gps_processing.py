@@ -3,8 +3,8 @@ Shared GPS processing logic module
 Contains common functions for GPS data filtering and validation
 """
 
-import math
 from datetime import datetime
+import math
 from typing import Any, Dict, List
 
 # Global state for location history tracking

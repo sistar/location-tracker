@@ -5,13 +5,14 @@ Shows how the same GPS data is handled differently with and without time conside
 """
 
 import json
-import sys
 import os
+import sys
 
 # Add the handlers directory to the path so we can import shared modules
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src', 'handlers'))
 
 import gps_processing
+
 
 def test_temporal_vs_distance_based():
     """Test the difference between temporal and distance-based outlier detection."""

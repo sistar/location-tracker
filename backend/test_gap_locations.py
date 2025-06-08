@@ -5,16 +5,17 @@ This validates that the GPS processing parameters don't accidentally filter vali
 Considers both spatial distance AND temporal gaps to determine realistic movement
 """
 
-import json
-import sys
-import os
 from datetime import datetime
+import json
+import os
+import sys
 
 # Add the handlers directory to the path so we can import shared modules
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src', 'handlers'))
 
 # Import shared GPS processing logic
 import gps_processing
+
 
 def parse_timestamp(time_str):
     """Parse ISO timestamp to datetime object."""

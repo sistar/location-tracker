@@ -1,10 +1,10 @@
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 import json
 import math
 import os
 import statistics
 import traceback
-from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 import boto3

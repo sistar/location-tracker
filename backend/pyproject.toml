@@ -40,6 +40,11 @@ skip = [
     "*.pyo",
     "*.pyd",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.0"
 coverage = "^7.8.2"

@@ -1,2 +1,0 @@
-This is a test file to trigger CI/CD validation.
-Created to test Poetry integration and Python 3.13 workflows.

@@ -6,6 +6,7 @@ import traceback
 
 import boto3
 from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 
 # IMPORTANT: DynamoDB timestamp schema
 # The 'timestamp' field is a Number (representing UTC epoch timestamp in seconds)
@@ -199,30 +200,35 @@ def handler(event, context):
             # Items are already sorted by timestamp (descending) due to ScanIndexForward=False
             sorted_items = items
             
-        except Exception as e:
-            # Fall back to scan and filter (for testing or if GSI doesn't exist)
-            print(f"GSI query failed, falling back to scan: {str(e)}")
-            response = logs_table.scan()
-            items = response.get("Items", [])
-            print(f"Found {len(items)} total items in the table")
+        except ClientError as e:
+            # Check if this is a GSI not found error, fall back to scan
+            error_code = e.response.get('Error', {}).get('Code', '')
+            if error_code in ['ValidationException', 'ResourceNotFoundException']:
+                print(f"GSI not available ({error_code}), falling back to scan: {str(e)}")
+                response = logs_table.scan()
+                items = response.get("Items", [])
+                print(f"Found {len(items)} total items in the table")
 
-            # Filter logs for the requested vehicle_id
-            filtered_items = []
-            for item in items:
-                item_vehicle_id = item.get("vehicleId", "vehicle_01")
-                if item_vehicle_id == vehicle_id:
-                    filtered_items.append(item)
+                # Filter logs for the requested vehicle_id
+                filtered_items = []
+                for item in items:
+                    item_vehicle_id = item.get("vehicleId", "vehicle_01")
+                    if item_vehicle_id == vehicle_id:
+                        filtered_items.append(item)
 
-            print(f"Filtered to {len(filtered_items)} items for vehicle_id: {vehicle_id}")
+                print(f"Filtered to {len(filtered_items)} items for vehicle_id: {vehicle_id}")
 
-            # Sort by timestamp descending (newest first)
-            def safe_timestamp_key(item):
-                ts = item.get("timestamp", "")
-                if isinstance(ts, (int, float, Decimal)):
-                    return float(ts)
-                return ts
+                # Sort by timestamp descending (newest first)
+                def safe_timestamp_key(item):
+                    ts = item.get("timestamp", "")
+                    if isinstance(ts, (int, float, Decimal)):
+                        return float(ts)
+                    return ts
 
-            sorted_items = sorted(filtered_items, key=safe_timestamp_key, reverse=True)
+                sorted_items = sorted(filtered_items, key=safe_timestamp_key, reverse=True)
+            else:
+                # Re-raise other AWS errors (like permission issues, actual DB errors)
+                raise
 
         # If no items, return empty array
         if not sorted_items:

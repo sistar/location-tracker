@@ -151,7 +151,7 @@ pytz==2024.1
 pyusb==1.2.1
 PyYAML==6.0.2
 regex==2024.9.11
-requests==2.32.3
+requests==2.32.4
 requests-cache==0.9.8
 requests-oauthlib==2.0.0
 rsa==4.9

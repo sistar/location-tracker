@@ -324,6 +324,7 @@ def handler(event, context):
                 "notes": body.get("notes", ""),
                 "startAddress": body.get("startAddress", ""),
                 "endAddress": body.get("endAddress", ""),
+                "vehicleId": vehicle_id,  # Include vehicleId in saved data
                 "locations": locations if locations else None,
             }
 

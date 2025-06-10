@@ -172,41 +172,39 @@ def handler(event, context):
 
             return {"statusCode": 200, "headers": headers, "body": response_body}
 
-        # Get all log entries if no ID is provided
-        print(f"Scanning logs table for vehicle_id: {vehicle_id}")
-        response = logs_table.scan()
+        # Get logs for the specified vehicle using GSI
+        print(f"Querying GSI for vehicle_id: {vehicle_id}")
+        response = logs_table.query(
+            IndexName='VehicleTimestampIndex',
+            KeyConditionExpression=Key('vehicleId').eq(vehicle_id),
+            ScanIndexForward=False  # Descending order (newest first)
+        )
+        
         items = response.get("Items", [])
-        print(f"Found {len(items)} total items in the table")
+        print(f"Found {len(items)} items for vehicle_id: {vehicle_id}")
 
-        # Filter logs for the requested vehicle_id
-        filtered_items = []
-        for item in items:
-            item_vehicle_id = item.get(
-                "vehicleId", "vehicle_01"
-            )  # Default to vehicle_01 if not specified
-            if item_vehicle_id == vehicle_id:
-                filtered_items.append(item)
-
-        print(f"Filtered to {len(filtered_items)} items for vehicle_id: {vehicle_id}")
+        # Handle pagination if there are more results
+        while 'LastEvaluatedKey' in response:
+            print(f"Fetching additional page...")
+            response = logs_table.query(
+                IndexName='VehicleTimestampIndex',
+                KeyConditionExpression=Key('vehicleId').eq(vehicle_id),
+                ScanIndexForward=False,
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            items.extend(response.get("Items", []))
+            print(f"Total items now: {len(items)}")
 
         # If no items, return empty array
-        if not filtered_items:
+        if not items:
             return {
                 "statusCode": 200,
                 "headers": headers,
                 "body": json.dumps({"logs": []}),
             }
 
-        # Sort by timestamp descending (newest first)
-        # Note: 'timestamp' here refers to the log creation timestamp, not the DynamoDB sort key
-        # Ensure we handle both string and numeric timestamps with a safe sorting key
-        def safe_timestamp_key(item):
-            ts = item.get("timestamp", "")
-            if isinstance(ts, (int, float, Decimal)):
-                return float(ts)
-            return ts
-
-        sorted_items = sorted(filtered_items, key=safe_timestamp_key, reverse=True)
+        # Items are already sorted by timestamp (descending) due to ScanIndexForward=False
+        sorted_items = items
 
         # Process items for response
         logs = []

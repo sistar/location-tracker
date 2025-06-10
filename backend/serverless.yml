@@ -48,6 +48,7 @@ provider:
             # Current v2 tables
             - "arn:aws:dynamodb:${self:provider.region}:*:table/gps-tracking-service-${self:provider.stage}-locations-v2"
             - "arn:aws:dynamodb:${self:provider.region}:*:table/gps-tracking-service-${self:provider.stage}-locations-logs-v2"
+            - "arn:aws:dynamodb:${self:provider.region}:*:table/gps-tracking-service-${self:provider.stage}-locations-logs-v2/index/*"
             - "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_GEOCODE_CACHE_TABLE}"
             # Legacy tables without v2 suffix (for backward compatibility)
             - "arn:aws:dynamodb:${self:provider.region}:*:table/gps-tracking-service-${self:provider.stage}-locations"
@@ -176,11 +177,22 @@ resources:
             AttributeType: S
           - AttributeName: timestamp
             AttributeType: N
+          - AttributeName: vehicleId
+            AttributeType: S
         KeySchema:
           - AttributeName: id
             KeyType: HASH
           - AttributeName: timestamp
             KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: VehicleTimestampIndex
+            KeySchema:
+              - AttributeName: vehicleId
+                KeyType: HASH
+              - AttributeName: timestamp
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
             
     GeocodeCacheTable:
       Type: AWS::DynamoDB::Table

@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - 'frontend/**'
+  workflow_dispatch:
 
 jobs:
   e2e-tests:
@@ -40,8 +41,10 @@ jobs:
       - name: Start dev server and run E2E tests
         run: |
           npm run dev &
+          DEV_PID=$!
           sleep 10
-          npm run test:ci
+          npm run test:ci || { kill $DEV_PID; exit 1; }
+          kill $DEV_PID
         env:
           CI: true
       
@@ -97,7 +100,7 @@ jobs:
   lighthouse-audit:
     runs-on: ubuntu-latest
     needs: e2e-tests
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && success()
     
     defaults:
       run:

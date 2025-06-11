@@ -97,10 +97,10 @@ jobs:
         
     - name: Install dependencies
       run: |
-        poetry install --with dev
+        poetry install --only unit
         
-    - name: Run tests with coverage
-      run: poetry run python run_coverage.py
+    - name: Run unit tests with coverage
+      run: poetry run pytest tests/unit/ -v --cov=src/handlers --cov-report=term-missing --cov-report=xml
       env:
         AWS_DEFAULT_REGION: us-east-1
         AWS_ACCESS_KEY_ID: dummy

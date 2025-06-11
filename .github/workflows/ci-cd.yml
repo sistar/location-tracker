@@ -12,10 +12,56 @@ env:
   AWS_REGION: eu-central-1
 
 jobs:
-  # Backend Testing Job
-  backend-test:
-    name: Backend Tests
+  # Backend unit tests (safe for all PRs including Dependabot)
+  backend-unit-test:
+    name: Backend Unit Tests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+        
+    - name: Cache Poetry dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: ${{ runner.os }}-poetry-unit-${{ hashFiles('**/poetry.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-poetry-unit-
+          
+    - name: Install unit test dependencies
+      run: |
+        poetry install --only unit
+        
+    - name: Run unit tests
+      run: |
+        poetry run pytest tests/unit/ -v --tb=short
+      env:
+        AWS_DEFAULT_REGION: us-east-1
+        AWS_ACCESS_KEY_ID: dummy
+        AWS_SECRET_ACCESS_KEY: dummy
+
+  # Backend integration tests (requires AWS credentials, skipped for Dependabot)
+  backend-integration-test:
+    name: Backend Integration Tests
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
     defaults:
       run:
         working-directory: ./backend
@@ -45,24 +91,24 @@ jobs:
       uses: actions/cache@v3
       with:
         path: .venv
-        key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+        key: ${{ runner.os }}-poetry-integration-${{ hashFiles('**/poetry.lock') }}
         restore-keys: |
-          ${{ runner.os }}-poetry-
+          ${{ runner.os }}-poetry-integration-
           
-    - name: Install dependencies
+    - name: Install integration test dependencies
       run: |
-        poetry install --with dev
+        poetry install --with integration
         
     - name: Configure AWS credentials for testing
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        aws-access-key-id: ${{ github.event_name == 'pull_request' && 'dummy' || secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ github.event_name == 'pull_request' && 'dummy' || secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: eu-central-1
         
-    - name: Run tests with coverage
+    - name: Run integration tests with coverage
       run: |
-        poetry run python run_coverage.py
+        poetry run pytest tests/integration/ -v --cov=src/handlers --cov-report=term-missing --cov-report=html --cov-report=xml
       env:
         AWS_DEFAULT_REGION: eu-central-1
         AWS_REGION: eu-central-1
@@ -117,7 +163,7 @@ jobs:
   # Backend Deployment Job
   backend-deploy:
     name: Deploy Backend
-    needs: [backend-test]
+    needs: [backend-unit-test, backend-integration-test]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     defaults:

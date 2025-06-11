@@ -1,4 +1,4 @@
-import puppeteer, { Browser, Page } from 'puppeteer';
+import { Browser, Page } from 'puppeteer';
 import { launchBrowser, createPage, TEST_CONFIG } from '../setup';
 
 describe('Location Tracker - Simple Test', () => {

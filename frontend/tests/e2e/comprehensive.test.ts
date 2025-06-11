@@ -1,4 +1,4 @@
-import puppeteer, { Browser, Page } from 'puppeteer';
+import { Browser, Page } from 'puppeteer';
 import { launchBrowser, createPage, TEST_CONFIG } from '../setup';
 
 describe('Location Tracker - Comprehensive E2E Tests', () => {
@@ -59,10 +59,6 @@ describe('Location Tracker - Comprehensive E2E Tests', () => {
 
   describe('Navigation Functionality', () => {
     test('should switch to Live Tracking tab', async () => {
-      const initialButtons = await page.$$eval('button', buttons => 
-        buttons.map(btn => btn.textContent?.trim())
-      );
-      
       // Click Live Tracking button
       const liveTrackingClicked = await page.evaluate(() => {
         const buttons = Array.from(document.querySelectorAll('button'));

@@ -108,7 +108,7 @@ jobs:
         
     - name: Run integration tests with coverage
       run: |
-        poetry run pytest tests/integration/ -v --cov=src/handlers --cov-report=term-missing --cov-report=html --cov-report=xml
+        poetry run pytest tests/integration/ -v -m integration --cov=src/handlers --cov-report=term-missing --cov-report=html --cov-report=xml
       env:
         AWS_DEFAULT_REGION: eu-central-1
         AWS_REGION: eu-central-1

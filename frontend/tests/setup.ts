@@ -40,11 +40,11 @@ export const waitForPageLoad = async (page: Page): Promise<void> => {
   await page.waitForSelector('body', { timeout: TEST_CONFIG.timeout });
 };
 
-// Global test utilities
-declare global {
-  namespace jest {
-    interface Matchers<R> {
-      toMatchScreenshot(name: string): R;
-    }
-  }
-}
+// Global test utilities - disabled for now
+// declare global {
+//   namespace jest {
+//     interface Matchers<R> {
+//       toMatchScreenshot(name: string): R;
+//     }
+//   }
+// }

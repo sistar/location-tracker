@@ -208,7 +208,7 @@ class TestHandler:
             assert isinstance(body, dict)
             assert "logs" in body
 
-    def test_handler_missing_parameters(self):
+    def test_handler_missing_parameters(self, mock_dynamodb_tables):
         """Test handler with missing required parameters"""
         event = {
             "queryStringParameters": {
@@ -217,23 +217,25 @@ class TestHandler:
             }
         }
 
-        response = handler(event, {})
+        with patch("handlers.get_drivers_logs.logs_table", mock_dynamodb_tables["logs_table"]):
+            response = handler(event, {})
 
-        # Handler doesn't validate required parameters, returns 200 with all logs
-        assert response["statusCode"] == 200
-        body = json.loads(response["body"])
-        assert "logs" in body
+            # Handler doesn't validate required parameters, returns 200 with all logs
+            assert response["statusCode"] == 200
+            body = json.loads(response["body"])
+            assert "logs" in body
 
-    def test_handler_no_query_parameters(self):
+    def test_handler_no_query_parameters(self, mock_dynamodb_tables):
         """Test handler with no query parameters"""
         event = {"queryStringParameters": None}
 
-        response = handler(event, {})
+        with patch("handlers.get_drivers_logs.logs_table", mock_dynamodb_tables["logs_table"]):
+            response = handler(event, {})
 
-        # Handler handles None params gracefully with defaults
-        assert response["statusCode"] == 200
-        body = json.loads(response["body"])
-        assert "logs" in body
+            # Handler handles None params gracefully with defaults
+            assert response["statusCode"] == 200
+            body = json.loads(response["body"])
+            assert "logs" in body
 
     @mock_aws
     def test_handler_database_error(self):
@@ -320,7 +322,7 @@ class TestHandler:
             # The handler doesn't fetch locations in this scenario - it just returns logs
             assert not mock_fetch_locations.called
 
-    def test_handler_invalid_time_format(self):
+    def test_handler_invalid_time_format(self, mock_dynamodb_tables):
         """Test handler with invalid time format"""
         event = {
             "queryStringParameters": {
@@ -330,12 +332,13 @@ class TestHandler:
             }
         }
 
-        response = handler(event, {})
+        with patch("handlers.get_drivers_logs.logs_table", mock_dynamodb_tables["logs_table"]):
+            response = handler(event, {})
 
-        # Handler ignores invalid time format and returns all logs
-        assert response["statusCode"] == 200
-        body = json.loads(response["body"])
-        assert "logs" in body
+            # Handler ignores invalid time format and returns all logs
+            assert response["statusCode"] == 200
+            body = json.loads(response["body"])
+            assert "logs" in body
 
     @patch("handlers.get_drivers_logs.fetch_locations_by_time_range")
     @mock_aws
@@ -371,7 +374,7 @@ class TestHandler:
             assert "logs" in body
             assert len(body["logs"]) == 0
 
-    def test_handler_exception(self):
+    def test_handler_exception(self, mock_dynamodb_tables):
         """Test handler with unexpected exception"""
         event = {
             "queryStringParameters": {
@@ -381,17 +384,18 @@ class TestHandler:
             }
         }
 
-        with patch(
-            "handlers.get_drivers_logs.fetch_locations_by_time_range"
-        ) as mock_fetch:
-            mock_fetch.side_effect = Exception("Unexpected error")
+        with patch("handlers.get_drivers_logs.logs_table", mock_dynamodb_tables["logs_table"]):
+            with patch(
+                "handlers.get_drivers_logs.fetch_locations_by_time_range"
+            ) as mock_fetch:
+                mock_fetch.side_effect = Exception("Unexpected error")
 
-            response = handler(event, {})
+                response = handler(event, {})
 
-            # Handler doesn't call fetch_locations when params are provided, so no exception
-            assert response["statusCode"] == 200
-            body = json.loads(response["body"])
-            assert "logs" in body
+                # Handler doesn't call fetch_locations when params are provided, so no exception
+                assert response["statusCode"] == 200
+                body = json.loads(response["body"])
+                assert "logs" in body
 
 
 class TestIntegrationScenarios:

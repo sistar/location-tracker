@@ -243,8 +243,12 @@ class TestHandler:
             }
         }
 
-        # Mock table that throws an error
+        # Mock table that throws an error for both GSI query and fallback scan
         with patch("handlers.get_drivers_logs.logs_table") as mock_table:
+            # Mock GSI query to throw a non-GSI error (like connection error)
+            from botocore.exceptions import ClientError
+            error_response = {'Error': {'Code': 'InternalServerError', 'Message': 'Database connection error'}}
+            mock_table.query.side_effect = ClientError(error_response, 'Query')
             mock_table.scan.side_effect = Exception("Database connection error")
 
             response = handler(event, {})

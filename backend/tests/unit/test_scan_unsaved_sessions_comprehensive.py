@@ -17,6 +17,9 @@ from handlers.scan_unsaved_sessions import (
     haversine,
 )
 
+# Mark all tests in this file as unit tests
+pytestmark = pytest.mark.unit
+
 
 class TestUtilityFunctions:
 

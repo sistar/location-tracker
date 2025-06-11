@@ -17,6 +17,9 @@ from handlers.save_drivers_log import (
     handler,
 )
 
+# Mark all tests in this file as unit tests
+pytestmark = pytest.mark.unit
+
 
 class TestUtilityFunctions:
 

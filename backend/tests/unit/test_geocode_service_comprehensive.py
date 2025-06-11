@@ -11,6 +11,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from handlers.geocode_service import handler, reverse_geocode
 
+# Mark all tests in this file as unit tests
+pytestmark = pytest.mark.unit
+
 
 class TestReverseGeocode:
     pass

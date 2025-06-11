@@ -13,6 +13,9 @@ from handlers.gps_processing import (
     reset_location_history,
 )
 
+# Mark all tests in this file as unit tests
+pytestmark = pytest.mark.unit
+
 
 class TestLocationHistoryManagement:
 

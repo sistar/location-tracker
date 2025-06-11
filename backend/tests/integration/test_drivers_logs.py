@@ -1,8 +1,12 @@
 import json
+import pytest
 
 # This is a mock handler for testing purposes
 # It returns sample driver logs with timestamps in epoch format (seconds since Unix epoch)
 # as per the updated DynamoDB schema
+
+# Mark all tests in this file as integration tests
+pytestmark = pytest.mark.integration
 
 
 def handler(event, context):

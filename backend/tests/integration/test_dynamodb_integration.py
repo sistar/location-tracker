@@ -19,6 +19,9 @@ import handlers.processor
 import handlers.save_drivers_log
 import handlers.scan_unsaved_sessions
 
+# Mark all tests in this file as integration tests
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def dynamodb_tables():

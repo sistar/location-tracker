@@ -174,7 +174,7 @@ tzlocal==5.2
 uart-devices==0.1.0
 ulid-transform==1.0.2
 url-normalize==1.4.3
-urllib3==1.26.20
+urllib3==2.5.0
 usb-devices==0.4.5
 voluptuous==0.15.2
 voluptuous-openapi==0.0.5

@@ -86,7 +86,7 @@ h11==0.16.0
 habluetooth==3.4.1
 hass-nabucasa==0.81.1
 home-assistant-bluetooth==1.12.2
-homeassistant==2024.9.3
+homeassistant==2025.10.2
 HomeAssistant-API==4.2.2.post2
 httpcore==1.0.5
 httpx==0.27.0

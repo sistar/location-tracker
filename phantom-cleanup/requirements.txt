@@ -120,7 +120,7 @@ packaging==24.1
 pandas==2.2.2
 pandas-gbq==0.27.0
 pikepdf==8.15.1
-pillow==10.4.0
+pillow==12.1.1
 proto-plus==1.26.0
 protobuf==5.28.2
 psutil==6.0.0
